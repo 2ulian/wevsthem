@@ -21,6 +21,9 @@ env/
 # Data — raw files only
 data/raw/
 
+# Cached embeddings and intermediate numpy files
+data/cache/
+
 # Model files
 *.pt
 *.bin
