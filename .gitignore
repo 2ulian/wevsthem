@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data — raw and processed files (can be large)
+data/raw/
+data/processed/
+
+# Model files
+*.pkl
+*.pt
+*.bin
+*.onnx
+src/othering_classifier.pkl
+
+# HuggingFace cache
+.cache/
+~/.cache/huggingface/
+
+# Reports — generated figures and exports (keep outlines)
+reports/figures/
+reports/platform_comparison.csv
+
+# Streamlit
+.streamlit/
+
+# Environment variables
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
