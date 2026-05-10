@@ -18,16 +18,13 @@ env/
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
-# Data — raw and processed files (can be large)
+# Data — raw files only
 data/raw/
-data/processed/
 
 # Model files
-*.pkl
 *.pt
 *.bin
 *.onnx
-src/othering_classifier.pkl
 
 # HuggingFace cache
 .cache/
