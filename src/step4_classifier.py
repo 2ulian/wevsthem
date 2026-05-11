@@ -199,3 +199,35 @@ print(f"  Confusion matrix:")
 print(best_entry["cm"])
 
 print("\nReady for Step 5 (BERTopic).")
+
+
+# ---------------------------------------------------------------------------
+# Task 7 — Inference on full dataset → dataset_classified.csv
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("TASK 7 — Full-dataset inference → dataset_classified.csv")
+print("=" * 60)
+
+# Re-load the full dataset (respects --max-rows if set earlier)
+texts_full = df[text_col].fillna("").tolist()
+print(f"  Running inference on {len(texts_full):,} rows…")
+
+if best_overall["vectorizer"] is not None:
+    # TF-IDF path: vectorizer already fitted on train split
+    X_full = best_overall["vectorizer"].transform(texts_full)
+else:
+    # Embeddings path: re-encode all texts
+    print("  Encoding full dataset with sentence-transformer (this may take a while)…")
+    X_full = build_embedding_features(texts_full, show_progress=True)
+
+model_inf = best_overall["model"]
+df["othering_predicted"] = model_inf.predict(X_full).astype(int)
+df["othering_proba"]     = model_inf.predict_proba(X_full)[:, 1].round(4)
+
+out_path = "data/processed/dataset_classified.csv"
+df.to_csv(out_path, index=False)
+
+pos_pred = df["othering_predicted"].sum()
+print(f"  othering_predicted=1 : {pos_pred:,} ({pos_pred/len(df)*100:.1f}%)")
+print(f"  Saved {len(df):,} rows → {out_path}")
+print("\nStep 4 complete. Ready for Step 5 (BERTopic).")
