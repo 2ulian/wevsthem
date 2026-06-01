@@ -971,6 +971,30 @@ elif page == "Toxicity":
         )
         st.plotly_chart(fig2, use_container_width=True)
 
+    # Toxicity × othering scatter
+    st.markdown('<div class="section-header">Toxicity × othering score</div>', unsafe_allow_html=True)
+    _sdf = df_tox.copy()
+    _sdf["othering_score"] = pd.to_numeric(_sdf["othering_score"], errors="coerce").fillna(0)
+    if len(_sdf) > 4000:
+        _sdf = _sdf.sample(4000, random_state=42)
+    _rng = np.random.default_rng(42)
+    _sdf["_jitter"] = _sdf["othering_score"] + _rng.uniform(-0.18, 0.18, len(_sdf))
+    _sdf["_color"]  = _sdf["othering_predicted"].map({1: PALETTE[1], 0: PALETTE[0]})
+    fig_s = go.Figure(go.Scatter(
+        x=_sdf["toxicity"], y=_sdf["_jitter"],
+        mode="markers",
+        marker=dict(size=4, color=_sdf["_color"].tolist(), opacity=0.35),
+        hovertemplate="tox: %{x:.3f}<br>score: %{y:.1f}<extra></extra>",
+        showlegend=False,
+    ))
+    apply_theme(fig_s, height=260)
+    fig_s.update_layout(
+        xaxis_title="Toxicity score",
+        yaxis=dict(title="Othering score (0–4)", tickvals=[0, 1, 2, 3, 4], zeroline=False),
+    )
+    st.markdown('<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#7070a0;margin-bottom:6px;">violet = othering · blue = non-othering</div>', unsafe_allow_html=True)
+    st.plotly_chart(fig_s, use_container_width=True)
+
     # Top toxic posts
     st.markdown('<div class="section-header">Most toxic posts</div>', unsafe_allow_html=True)
     top_n = st.slider("Show top N", 5, 50, 10, key="tox_top_n")
@@ -1152,6 +1176,92 @@ elif page == "Othering":
         apply_theme(fig2, height=max(240, len(heat_pivot) * 36 + 80))
         fig2.update_layout(xaxis_title="", yaxis_title="")
         st.plotly_chart(fig2, use_container_width=True)
+
+    # Pattern families — grouped by dataset
+    st.markdown('<div class="section-header">Pattern families by dataset</div>', unsafe_allow_html=True)
+    _FAMILY_ORDER  = ["dehumanizing", "moral_exclusion", "generalization", "threat_framing"]
+    _FAMILY_COLORS = dict(zip(_FAMILY_ORDER, [PALETTE[1], PALETTE[0], PALETTE[2], PALETTE[3]]))
+    _fam_rows = []
+    try:
+        from othering import ALL_FAMILIES as _AF
+        _p2f = {lbl: fam for fam, pats in _AF.items() for lbl, _ in pats}
+        _oth_posts = df[df["othering_predicted"] == 1].copy()
+        if "matched_patterns" in _oth_posts.columns and not _oth_posts.empty:
+            def _extract_fams(val):
+                if isinstance(val, list): pats = val
+                elif isinstance(val, str):
+                    try: pats = _ast.literal_eval(val)
+                    except: pats = []
+                else: pats = []
+                return {_p2f[p] for p in pats if p in _p2f}
+            _oth_posts["_fams"] = _oth_posts["matched_patterns"].apply(_extract_fams)
+            _oth_posts["short"] = _oth_posts["dataset"].apply(
+                lambda x: re.sub(r"\.(csv|xlsx)$", "", x.split("  ·  ")[-1]) if "  ·  " in x else x)
+            _ds_totals = _oth_posts.groupby("short").size()
+            for _fam in _FAMILY_ORDER:
+                _fam_hits = _oth_posts[_oth_posts["_fams"].apply(lambda f: _fam in f)].groupby("short").size()
+                for _ds, _cnt in _fam_hits.items():
+                    _fam_rows.append({"dataset": _ds, "family": _fam,
+                                      "pct": round(_cnt / _ds_totals.get(_ds, 1) * 100, 1)})
+    except Exception:
+        pass
+
+    if _fam_rows:
+        _fbd = pd.DataFrame(_fam_rows)
+        fig3 = go.Figure()
+        for _fam in _FAMILY_ORDER:
+            _sub = _fbd[_fbd["family"] == _fam]
+            fig3.add_trace(go.Bar(
+                name=_fam.replace("_", " "),
+                x=_sub["dataset"], y=_sub["pct"],
+                marker_color=_FAMILY_COLORS[_fam],
+                marker_line_width=0,
+            ))
+        apply_theme(fig3, height=300)
+        fig3.update_layout(
+            barmode="group", xaxis_title="", yaxis_title="% of othering posts",
+            legend=dict(orientation="h", y=1.06, x=0.5, xanchor="center"),
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+    else:
+        st.info("No matched_patterns data available.")
+
+    # Pattern co-occurrence
+    st.markdown('<div class="section-header">Pattern co-occurrence</div>', unsafe_allow_html=True)
+    try:
+        from othering import ALL_FAMILIES as _AF_co
+        _all_labels = [lbl for _fam, pats in _AF_co.items() for lbl, _ in pats]
+        _oth_df = df[df["othering_predicted"] == 1].dropna(subset=["matched_patterns"])
+        _co = pd.DataFrame(0, index=_all_labels, columns=_all_labels, dtype=int)
+        for _val in _oth_df["matched_patterns"]:
+            if isinstance(_val, list): _pats = _val
+            elif isinstance(_val, str):
+                try: _pats = _ast.literal_eval(_val)
+                except: _pats = []
+            else: _pats = []
+            _present = [p for p in _pats if p in _all_labels]
+            for _a in _present:
+                for _b in _present:
+                    if _a != _b:
+                        _co.loc[_a, _b] += 1
+        _mask = _co.sum(axis=1) > 0
+        _co = _co.loc[_mask, _mask]
+        if not _co.empty:
+            fig_co = go.Figure(go.Heatmap(
+                z=_co.values,
+                x=_co.columns.tolist(),
+                y=_co.index.tolist(),
+                colorscale=[[0, "#13131a"], [0.3, "rgba(14,165,233,0.3)"], [1, "#0ea5e9"]],
+                texttemplate="%{z}",
+                textfont=dict(family="IBM Plex Mono, monospace", size=9),
+                showscale=False,
+                hoverongaps=False,
+            ))
+            apply_theme(fig_co, height=max(320, len(_co) * 26 + 80))
+            fig_co.update_layout(xaxis=dict(tickangle=-45), yaxis_title="")
+            st.plotly_chart(fig_co, use_container_width=True)
+    except Exception:
+        pass
 
     # Post examples as cards
     st.markdown('<div class="section-header">Post examples</div>', unsafe_allow_html=True)
