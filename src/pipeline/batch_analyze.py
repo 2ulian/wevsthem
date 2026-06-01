@@ -1,7 +1,7 @@
 """
 Batch analysis script — runs the full pipeline on all raw datasets.
 
-For each CSV in data/Datasets/:
+For each CSV in data/datasets/:
   1. Detect text column
   2. Clean text + pronoun tagging + othering detection
   3. Detoxify  (toxicity, severe_toxicity, identity_attack, insult, threat)
@@ -9,7 +9,7 @@ For each CSV in data/Datasets/:
   5. Save results in-place
 
 Usage:
-    python src/batch_analyze.py [--skip-toxicity] [--skip-emotions] [--dry-run]
+    python src/pipeline/batch_analyze.py [--skip-toxicity] [--skip-emotions] [--dry-run]
 """
 
 import argparse
@@ -190,7 +190,7 @@ def main():
     parser.add_argument("--dry-run",       action="store_true")
     args = parser.parse_args()
 
-    datasets_dir = BASE_DIR / "data" / "Datasets"
+    datasets_dir = BASE_DIR / "data" / "datasets"
     files = sorted(datasets_dir.rglob("*.csv"))
     print(f"Found {len(files)} CSV files.")
 

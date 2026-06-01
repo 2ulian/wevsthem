@@ -6,13 +6,13 @@ Pipeline:
   - Task 2: Build TF-IDF features → train LR + SVM → evaluate
   - Task 3: Build sentence-transformer embeddings → train LR + SVM → evaluate
   - Task 4: Compare all models, pick best
-  - Task 5: Save best model to src/othering_classifier.pkl
+  - Task 5: Save best model to models/othering_classifier.pkl
   - Task 6: Print full classification report + error analysis
 
 Usage:
-  python src/step4_classifier.py                   # full dataset
-  python src/step4_classifier.py --max-rows 5000   # quick test
-  python src/step4_classifier.py --skip-embeddings # TF-IDF only (faster)
+  python src/pipeline/step4_classifier.py                   # full dataset
+  python src/pipeline/step4_classifier.py --max-rows 5000   # quick test
+  python src/pipeline/step4_classifier.py --skip-embeddings # TF-IDF only (faster)
 """
 
 import sys
@@ -183,7 +183,7 @@ payload = {
     "vectorizer": best_overall["vectorizer"],   # None for embeddings model
     "model_name": best_overall["name"],
 }
-save_model(payload, "src/othering_classifier.pkl")
+save_model(payload, "models/othering_classifier.pkl")
 
 
 # ---------------------------------------------------------------------------

@@ -9,8 +9,8 @@ Pipeline:
   - Task 5: Summary — % posts with othering, top matched patterns
 
 Usage:
-  python src/step3_othering.py              # full dataset
-  python src/step3_othering.py --max-rows 5000  # quick test on 5k rows
+  python src/pipeline/step3_othering.py              # full dataset
+  python src/pipeline/step3_othering.py --max-rows 5000  # quick test on 5k rows
 """
 
 import sys
