@@ -538,7 +538,7 @@ df_all = st.session_state["df_combined"]
 
 if "uploaded_df" in st.session_state:
     udf = st.session_state["uploaded_df"].copy()
-    udf["dataset"] = f"📎  {st.session_state.get('upload_name', 'Uploaded')}"
+    udf["dataset"] = f"Imported  ·  {st.session_state.get('upload_name', 'Uploaded')}"
     if udf["dataset"].iloc[0] not in df_all["dataset"].values:
         df_all = pd.concat([udf, df_all], ignore_index=True)
         st.session_state["df_combined"] = df_all
@@ -553,8 +553,8 @@ PAGES = [
     ("Toxicity",  "◎"),
     ("Emotions",  "◉"),
     ("Othering",  "◆"),
-    ("Upload",    "▲"),
 ]
+PAGE_UPLOAD = ("Upload", "▲")
 
 with st.sidebar:
     st.markdown("""
@@ -570,10 +570,16 @@ with st.sidebar:
 
     for pname, picon in PAGES:
         active = st.session_state["page"] == pname
-        cls = "nav-pill active" if active else "nav-pill"
         if st.button(f"{picon}  {pname}", key=f"nav_{pname}", use_container_width=True):
             st.session_state["page"] = pname
             st.rerun()
+
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    pname, picon = PAGE_UPLOAD
+    active = st.session_state["page"] == pname
+    if st.button(f"{picon}  {pname}", key=f"nav_{pname}", use_container_width=True):
+        st.session_state["page"] = pname
+        st.rerun()
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
@@ -608,6 +614,21 @@ with st.sidebar:
             st.markdown(f'<div class="section-header" style="font-size:10px;">{_emoji} {_group.upper()}</div>',
                         unsafe_allow_html=True)
             for _lbl in _labels:
+                _count = _ds_counts.get(_lbl, 0)
+                _short = re.sub(r"\.(csv|xlsx)$", "", _lbl.split("  ·  ")[-1])
+                _display = f"{_short}" + (f"  ·  {_count:,}" if _count else "")
+                if st.checkbox(_display, value=True, key=f"_ds_{_lbl}"):
+                    selected_datasets.append(_lbl)
+            st.markdown(" ")
+
+        # Imported datasets (uploaded via Upload page)
+        _imported_labels = sorted(
+            lbl for lbl in all_dataset_labels if lbl.startswith("Imported  ·  ")
+        )
+        if _imported_labels:
+            st.markdown('<div class="section-header" style="font-size:10px;">📎 IMPORTED</div>',
+                        unsafe_allow_html=True)
+            for _lbl in _imported_labels:
                 _count = _ds_counts.get(_lbl, 0)
                 _short = re.sub(r"\.(csv|xlsx)$", "", _lbl.split("  ·  ")[-1])
                 _display = f"{_short}" + (f"  ·  {_count:,}" if _count else "")
@@ -714,7 +735,7 @@ if page == "Upload":
                 st.session_state["uploaded_df"] = result
                 st.session_state["upload_name"] = uploaded.name
                 udf = result.copy()
-                udf["dataset"] = f"📎  {uploaded.name}"
+                udf["dataset"] = f"Imported  ·  {uploaded.name}"
                 existing = st.session_state["df_combined"]
                 existing = existing[existing["dataset"] != udf["dataset"].iloc[0]]
                 st.session_state["df_combined"] = pd.concat([udf, existing], ignore_index=True)
