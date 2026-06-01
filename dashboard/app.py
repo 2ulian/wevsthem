@@ -386,10 +386,10 @@ PLATFORM_EMOJI = {
     "Sentiment": "◉",
     "Tiktok":    "▶",
     "Twitter":   "◆",
-    "Import":    "▲",
+    "Imported":  "▲",
 }
 
-CUSTOM_DIR = DATASETS_DIR / "import"
+CUSTOM_DIR = DATASETS_DIR / "imported"
 
 EMOTION_VALENCE = {
     "admiration": "positive",  "amusement": "positive",   "approval": "positive",
@@ -593,8 +593,8 @@ def discover_datasets() -> dict:
             if files:
                 groups[folder.name.capitalize()] = [(f.name, f) for f in files]
     # Always put Import last
-    if "Import" in groups:
-        groups["Import"] = groups.pop("Import")
+    if "Imported" in groups:
+        groups["Imported"] = groups.pop("Imported")
     return groups
 
 
