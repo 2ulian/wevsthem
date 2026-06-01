@@ -143,15 +143,13 @@ def discover_datasets() -> dict:
     defaults = []
     if FINAL_CSV.exists():
         defaults.append(("dataset_final.csv", FINAL_CSV))
-    if CLASSIFIED_CSV.exists():
-        defaults.append(("dataset_classified.csv", CLASSIFIED_CSV))
     if defaults:
         groups["Default"] = defaults
     if DATASETS_DIR.exists():
         for folder in sorted(DATASETS_DIR.iterdir()):
             if not folder.is_dir():
                 continue
-            files = sorted(f for f in folder.iterdir() if f.suffix.lower() in (".csv", ".xlsx"))
+            files = sorted(f for f in folder.iterdir() if f.suffix.lower() == ".csv")
             if files:
                 groups[folder.name.capitalize()] = [(f.name, f) for f in files]
     return groups
@@ -198,6 +196,7 @@ def build_combined() -> pd.DataFrame:
             try:
                 df = load_single(str(path), is_def)
                 df = df.copy()
+                df = df.loc[:, ~df.columns.duplicated()]
                 df["dataset"] = label
                 frames.append(df)
             except Exception as e:
