@@ -315,7 +315,7 @@ def hex_rgba(hex_color: str, alpha: float = 0.2) -> str:
 
 FINAL_CSV      = BASE_DIR / "data" / "processed" / "dataset_final.csv"
 CLASSIFIED_CSV = BASE_DIR / "data" / "processed" / "dataset_classified.csv"
-DATASETS_DIR   = BASE_DIR / "data" / "Datasets"
+DATASETS_DIR   = BASE_DIR / "data" / "datasets"
 
 WE_WORDS     = ["we", "us", "our", "ours", "ourselves"]
 THEM_WORDS   = ["they", "them", "their", "theirs"]

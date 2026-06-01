@@ -28,6 +28,7 @@ data/cache/
 *.pt
 *.bin
 *.onnx
+models/*.pkl
 
 # HuggingFace cache
 .cache/
