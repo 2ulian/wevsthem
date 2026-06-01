@@ -381,15 +381,15 @@ TEXT_ALIASES = [
 ]
 
 PLATFORM_EMOJI = {
-    "Custom":    "▲",
     "Default":   "◈",
     "Instagram": "◎",
     "Sentiment": "◉",
     "Tiktok":    "▶",
     "Twitter":   "◆",
+    "Import":    "▲",
 }
 
-CUSTOM_DIR = DATASETS_DIR / "custom"
+CUSTOM_DIR = DATASETS_DIR / "import"
 
 EMOTION_VALENCE = {
     "admiration": "positive",  "amusement": "positive",   "approval": "positive",
@@ -592,6 +592,9 @@ def discover_datasets() -> dict:
             files = sorted(f for f in folder.iterdir() if f.suffix.lower() == ".csv")
             if files:
                 groups[folder.name.capitalize()] = [(f.name, f) for f in files]
+    # Always put Import last
+    if "Import" in groups:
+        groups["Import"] = groups.pop("Import")
     return groups
 
 
