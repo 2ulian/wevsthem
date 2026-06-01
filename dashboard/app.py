@@ -144,30 +144,80 @@ h1, h2, h3, h4 {
 
 /* Nav pills */
 .nav-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: 8px;
   font-family: 'Syne', sans-serif;
   font-size: 13px;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
   border: 1px solid transparent;
   width: 100%;
   margin-bottom: 4px;
+  box-sizing: border-box;
 }
 .nav-pill.active {
-  background: rgba(124,58,237,0.2);
-  border-color: rgba(124,58,237,0.4);
+  background: rgba(124,58,237,0.18);
+  border-color: rgba(124,58,237,0.35);
+  border-left: 3px solid var(--accent);
   color: #c4b5fd !important;
+  cursor: default;
+  padding-left: 11px;
 }
-.nav-pill:not(.active) {
+
+/* Sidebar nav buttons */
+[data-testid="stSidebar"] .stButton button {
+  font-family: 'Syne', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
   color: var(--muted) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  padding: 8px 14px !important;
+  width: 100% !important;
+  text-align: left !important;
+  margin-bottom: 4px !important;
+  transition: all 0.15s !important;
 }
-.nav-pill:not(.active):hover {
-  background: rgba(255,255,255,0.04);
+[data-testid="stSidebar"] .stButton button:hover {
+  background: rgba(124,58,237,0.08) !important;
+  border-color: var(--accent) !important;
+  color: var(--text) !important;
+}
+/* All / None buttons inside the dataset expander */
+[data-testid="stSidebar"] details .stButton button {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  font-size: 11px !important;
+  padding: 3px 10px !important;
+  border-radius: 4px !important;
+  width: 100% !important;
+  margin-bottom: 2px !important;
+}
+[data-testid="stSidebar"] details .stButton button:hover {
+  border-color: var(--accent) !important;
+  color: #c4b5fd !important;
+  background: rgba(124,58,237,0.08) !important;
+}
+
+/* Active nav button (Streamlit 1.39+ : data-testid + class on the <button> element) */
+[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] button.stBaseButton-primary {
+  color: #c4b5fd !important;
+  background: rgba(124,58,237,0.18) !important;
+  border: 1px solid rgba(124,58,237,0.35) !important;
+  border-left: 3px solid var(--accent) !important;
+  padding-left: 11px !important;
+}
+[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"]:hover,
+[data-testid="stSidebar"] button.stBaseButton-primary:hover {
+  color: #ede9fe !important;
+  background: rgba(124,58,237,0.28) !important;
+  border-color: rgba(124,58,237,0.55) !important;
+  border-left: 3px solid var(--accent) !important;
 }
 
 /* Dataset pills */
@@ -214,7 +264,7 @@ h1, h2, h3, h4 {
 
 /* Streamlit overrides */
 .stButton button {
-  background: var(--card) !important;
+  background: var(--surface) !important;
   border: 1px solid var(--border) !important;
   color: var(--text) !important;
   font-family: 'IBM Plex Mono', monospace !important;
@@ -225,6 +275,7 @@ h1, h2, h3, h4 {
 .stButton button:hover {
   border-color: var(--accent) !important;
   color: #c4b5fd !important;
+  background: rgba(124,58,237,0.08) !important;
 }
 [data-testid="stMetric"] {
   background: var(--card) !important;
@@ -556,6 +607,15 @@ PAGES = [
 ]
 PAGE_UPLOAD = ("Upload", "▲")
 
+# Detect nav clicks BEFORE the sidebar renders so type= is already correct this run.
+# st.session_state[f"nav_{pname}"] is True at the start of the run if that button was clicked.
+if "page" not in st.session_state:
+    st.session_state["page"] = "Overview"
+for _pname, _ in PAGES + [PAGE_UPLOAD]:
+    if st.session_state.get(f"nav_{_pname}"):
+        st.session_state["page"] = _pname
+        break
+
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-brand">
@@ -565,92 +625,113 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    if "page" not in st.session_state:
-        st.session_state["page"] = "Overview"
-
     for pname, picon in PAGES:
-        active = st.session_state["page"] == pname
-        if st.button(f"{picon}  {pname}", key=f"nav_{pname}", use_container_width=True):
-            st.session_state["page"] = pname
-            st.rerun()
+        _active = st.session_state["page"] == pname
+        st.button(f"{picon}  {pname}", key=f"nav_{pname}", use_container_width=True,
+                  type="primary" if _active else "secondary")
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
     pname, picon = PAGE_UPLOAD
-    active = st.session_state["page"] == pname
-    if st.button(f"{picon}  {pname}", key=f"nav_{pname}", use_container_width=True):
-        st.session_state["page"] = pname
-        st.rerun()
+    _active = st.session_state["page"] == pname
+    st.button(f"{picon}  {pname}", key=f"nav_{pname}", use_container_width=True,
+              type="primary" if _active else "secondary")
 
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-    # Dataset selector
-    if st.session_state["page"] != "Upload":
-        st.markdown('<div class="section-header">Datasets</div>', unsafe_allow_html=True)
+    # Dataset selector (always visible, all pages)
+    _ds_counts = df_all["dataset"].value_counts().to_dict() if not df_all.empty else {}
+    _groups    = discover_datasets()
 
+    # Pre-detect All/None clicks (same pattern as nav buttons) so propagation
+    # and label count are correct in this very run.
+    if st.session_state.get("_ds_btn_all"):
+        for _lbl in all_dataset_labels:
+            st.session_state[f"_ds_{_lbl}"] = True
+    if st.session_state.get("_ds_btn_none"):
+        for _lbl in all_dataset_labels:
+            st.session_state[f"_ds_{_lbl}"] = False
+
+    def _propagate_group(grp_key, was_key, labels):
+        _now = st.session_state.get(grp_key, True)
+        _was = st.session_state.get(was_key)
+        if _was is not None and _now != _was:
+            for _l in labels:
+                st.session_state[f"_ds_{_l}"] = _now
+        else:
+            st.session_state[grp_key] = all(
+                st.session_state.get(f"_ds_{_l}", True) for _l in labels
+            )
+        st.session_state[was_key] = st.session_state[grp_key]
+
+    _all_set = set(all_dataset_labels)
+    for _group, _files in _groups.items():
+        _labels = [f"{_group}  ·  {n}" for n, _ in _files if f"{_group}  ·  {n}" in _all_set]
+        if _labels:
+            _propagate_group(f"_grp_{_group}", f"_grp_was_{_group}", _labels)
+
+    _imported_labels = sorted(l for l in all_dataset_labels if l.startswith("Imported  ·  "))
+    if _imported_labels:
+        _propagate_group("_grp_Imported", "_grp_was_Imported", _imported_labels)
+
+    _n_total   = len(all_dataset_labels)
+    _n_checked = sum(1 for _l in all_dataset_labels if st.session_state.get(f"_ds_{_l}", True))
+    _ds_label  = f"Datasets · {_n_checked} / {_n_total}"
+    selected_datasets = []
+
+    with st.expander(_ds_label, expanded=False, key="_ds_expander"):
         _b1, _b2 = st.columns(2)
-        if _b1.button("All", use_container_width=True, key="_ds_btn_all"):
-            for _lbl in all_dataset_labels:
-                st.session_state[f"_ds_{_lbl}"] = True
-            st.rerun()
-        if _b2.button("None", use_container_width=True, key="_ds_btn_none"):
-            for _lbl in all_dataset_labels:
-                st.session_state[f"_ds_{_lbl}"] = False
-            st.rerun()
+        _b1.button("All",  use_container_width=True, key="_ds_btn_all")
+        _b2.button("None", use_container_width=True, key="_ds_btn_none")
 
         st.markdown(" ")
-        _ds_counts = df_all["dataset"].value_counts().to_dict() if not df_all.empty else {}
-        _groups    = discover_datasets()
-        selected_datasets = []
 
         for _group, _files in _groups.items():
             _emoji = PLATFORM_EMOJI.get(_group, "◈")
             _labels = [
                 f"{_group}  ·  {_name}"
                 for _name, _ in _files
-                if f"{_group}  ·  {_name}" in set(all_dataset_labels)
+                if f"{_group}  ·  {_name}" in _all_set
             ]
             if not _labels:
                 continue
-            st.markdown(f'<div class="section-header" style="font-size:10px;">{_emoji} {_group.upper()}</div>',
-                        unsafe_allow_html=True)
-            for _lbl in _labels:
-                _count = _ds_counts.get(_lbl, 0)
-                _short = re.sub(r"\.(csv|xlsx)$", "", _lbl.split("  ·  ")[-1])
-                _display = f"{_short}" + (f"  ·  {_count:,}" if _count else "")
-                if st.checkbox(_display, value=True, key=f"_ds_{_lbl}"):
-                    selected_datasets.append(_lbl)
+            st.checkbox(f"{_emoji} {_group.upper()}", key=f"_grp_{_group}")
+            _, _col = st.columns([0.08, 0.92])
+            with _col:
+                for _lbl in _labels:
+                    _count = _ds_counts.get(_lbl, 0)
+                    _short = re.sub(r"\.(csv|xlsx)$", "", _lbl.split("  ·  ")[-1])
+                    _display = f"{_short}" + (f"  ·  {_count:,}" if _count else "")
+                    if st.checkbox(_display, value=True, key=f"_ds_{_lbl}"):
+                        selected_datasets.append(_lbl)
             st.markdown(" ")
 
-        # Imported datasets (uploaded via Upload page)
-        _imported_labels = sorted(
-            lbl for lbl in all_dataset_labels if lbl.startswith("Imported  ·  ")
-        )
         if _imported_labels:
-            st.markdown('<div class="section-header" style="font-size:10px;">📎 IMPORTED</div>',
-                        unsafe_allow_html=True)
-            for _lbl in _imported_labels:
-                _count = _ds_counts.get(_lbl, 0)
-                _short = re.sub(r"\.(csv|xlsx)$", "", _lbl.split("  ·  ")[-1])
-                _display = f"{_short}" + (f"  ·  {_count:,}" if _count else "")
-                if st.checkbox(_display, value=True, key=f"_ds_{_lbl}"):
-                    selected_datasets.append(_lbl)
+            st.checkbox("▲ IMPORTED", key="_grp_Imported")
+            _, _col = st.columns([0.08, 0.92])
+            with _col:
+                for _lbl in _imported_labels:
+                    _count = _ds_counts.get(_lbl, 0)
+                    _short = re.sub(r"\.(csv|xlsx)$", "", _lbl.split("  ·  ")[-1])
+                    _display = f"{_short}" + (f"  ·  {_count:,}" if _count else "")
+                    if st.checkbox(_display, value=True, key=f"_ds_{_lbl}"):
+                        selected_datasets.append(_lbl)
             st.markdown(" ")
 
-        st.markdown('<hr class="divider">', unsafe_allow_html=True)
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-        # Search & filter
-        st.markdown('<div class="section-header">Filters</div>', unsafe_allow_html=True)
-        keyword = st.text_input("", placeholder="Search keyword...", label_visibility="collapsed")
+    # Search & filter
+    st.markdown('<div class="section-header">Filters</div>', unsafe_allow_html=True)
+    keyword = st.text_input("", placeholder="Search keyword...", label_visibility="collapsed")
 
-        _df_for_subs = df_all[df_all["dataset"].isin(selected_datasets)] if selected_datasets else df_all
-        known_subreddits = sorted(
-            s for s in _df_for_subs["subreddit"].unique()
-            if s not in ("unknown", "none", "") and pd.notna(s)
-        )
-        selected_subreddits = st.multiselect(
-            "", options=known_subreddits, default=[], placeholder="Subreddit / account",
-            label_visibility="collapsed",
-        )
+    _df_for_subs = df_all[df_all["dataset"].isin(selected_datasets)] if selected_datasets else df_all
+    known_subreddits = sorted(
+        s for s in _df_for_subs["subreddit"].unique()
+        if s not in ("unknown", "none", "") and pd.notna(s)
+    )
+    selected_subreddits = st.multiselect(
+        "", options=known_subreddits, default=[], placeholder="Subreddit / account",
+        label_visibility="collapsed",
+    )
 
 page = st.session_state["page"]
 
@@ -930,7 +1011,7 @@ elif page == "Toxicity":
         st.info("No toxicity data. Run Detoxify via Upload, or select a default dataset.")
         st.stop()
 
-    st.markdown(f'<div class="page-subtitle">{len(df_tox):,} posts with toxicity scores</div>',
+    st.markdown(f'<div class="page-subtitle">{len(df_tox):,} posts with toxicity scores · {df["dataset"].nunique()} dataset(s)</div>',
                 unsafe_allow_html=True)
 
     # KPI row
@@ -1050,7 +1131,7 @@ elif page == "Emotions":
         st.stop()
 
     pct_cov = len(df_emo) / len(df) * 100
-    st.markdown(f'<div class="page-subtitle">{len(df_emo):,} posts with emotion labels ({pct_cov:.1f}% coverage)</div>',
+    st.markdown(f'<div class="page-subtitle">{len(df_emo):,} posts with emotion labels ({pct_cov:.1f}% coverage) · {df["dataset"].nunique()} dataset(s)</div>',
                 unsafe_allow_html=True)
 
     col_a, col_b = st.columns([2, 3])
@@ -1138,7 +1219,7 @@ elif page == "Othering":
 
     total_oth = df["othering_predicted"].sum()
     pct_oth   = df["othering_predicted"].mean() * 100
-    st.markdown(f'<div class="page-subtitle">{total_oth:,} othering posts detected ({pct_oth:.1f}%)</div>',
+    st.markdown(f'<div class="page-subtitle">{total_oth:,} othering posts detected ({pct_oth:.1f}%) · {df["dataset"].nunique()} dataset(s)</div>',
                 unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
