@@ -381,12 +381,15 @@ TEXT_ALIASES = [
 ]
 
 PLATFORM_EMOJI = {
+    "Custom":    "▲",
     "Default":   "◈",
     "Instagram": "◎",
     "Sentiment": "◉",
     "Tiktok":    "▶",
     "Twitter":   "◆",
 }
+
+CUSTOM_DIR = DATASETS_DIR / "custom"
 
 EMOTION_VALENCE = {
     "admiration": "positive",  "amusement": "positive",   "approval": "positive",
@@ -460,11 +463,20 @@ def fast_pipeline(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def run_full_pipeline(df: pd.DataFrame, run_detoxify: bool, run_emotions: bool, progress) -> pd.DataFrame:
+def run_full_pipeline(df: pd.DataFrame, run_detoxify: bool, run_emotions: bool,
+                      run_bertopic: bool, progress) -> pd.DataFrame:
+    n_steps = 1 + run_detoxify + run_emotions + run_bertopic
+    step = 0
+
+    def _p(frac, msg):
+        progress.progress((step + frac) / n_steps, msg)
+
     df = fast_pipeline(df)
-    progress.progress(0.35, "Base analysis done.")
+    step += 1
+    progress.progress(step / n_steps, "Base analysis done.")
+
     if run_detoxify and df["toxicity"].isna().all():
-        progress.progress(0.40, "Running Detoxify...")
+        _p(0.0, "Running Detoxify...")
         try:
             from detoxify import Detoxify
             model = Detoxify("original")
@@ -475,14 +487,17 @@ def run_full_pipeline(df: pd.DataFrame, run_detoxify: bool, run_emotions: bool, 
                 res = model.predict(texts[i:i + 64])
                 for c in tox_cols:
                     all_res[c].extend(res[c])
-                progress.progress(0.40 + 0.35 * min((i + 64) / len(texts), 1.0),
-                                   f"Detoxify — {min(i+64, len(texts))}/{len(texts)}")
+                _p(min((i + 64) / len(texts), 1.0),
+                   f"Detoxify — {min(i+64, len(texts))}/{len(texts)}")
             for c in tox_cols:
                 df[c] = all_res[c]
         except ImportError:
             st.warning("Detoxify not installed.")
+        step += 1
+        progress.progress(step / n_steps, "Detoxify done.")
+
     if run_emotions and df["emotion"].isna().all():
-        progress.progress(0.78, "Running GoEmotions...")
+        _p(0.0, "Running GoEmotions...")
         try:
             from transformers import pipeline as hf_pipeline
             pipe = hf_pipeline("text-classification",
@@ -493,12 +508,70 @@ def run_full_pipeline(df: pd.DataFrame, run_detoxify: bool, run_emotions: bool, 
                 res = pipe(texts[i:i + 16])
                 emotions.extend(r[0]["label"] for r in res)
                 scores.extend(r[0]["score"]   for r in res)
-                progress.progress(0.78 + 0.18 * min((i + 16) / len(texts), 1.0),
-                                   f"GoEmotions — {min(i+16, len(texts))}/{len(texts)}")
+                _p(min((i + 16) / len(texts), 1.0),
+                   f"GoEmotions — {min(i+16, len(texts))}/{len(texts)}")
             df["emotion"]       = emotions
             df["emotion_score"] = scores
         except ImportError:
             st.warning("Transformers not installed.")
+        step += 1
+        progress.progress(step / n_steps, "GoEmotions done.")
+
+    if run_bertopic:
+        _p(0.0, "Running BERTopic — encoding texts...")
+        try:
+            from sentence_transformers import SentenceTransformer
+            from bertopic import BERTopic
+            from hdbscan import HDBSCAN
+            from umap import UMAP
+
+            text_col = "clean_text" if "clean_text" in df.columns else "text"
+            docs = df[text_col].fillna("").tolist()
+
+            st_model = SentenceTransformer("all-MiniLM-L6-v2")
+            embeddings = st_model.encode(docs, batch_size=32, show_progress_bar=False,
+                                         convert_to_numpy=True)
+            _p(0.35, "BERTopic — fitting UMAP...")
+
+            umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.0,
+                              metric="cosine", random_state=42)
+            umap_embeddings = umap_model.fit_transform(embeddings)
+            _p(0.65, "BERTopic — clustering...")
+
+            min_topic_size = max(5, len(docs) // 150)
+            hdbscan_model = HDBSCAN(
+                min_cluster_size=min_topic_size,
+                metric="euclidean",
+                cluster_selection_method="eom",
+                prediction_data=True,
+                core_dist_n_jobs=1,
+            )
+            topic_model = BERTopic(
+                umap_model=umap_model,
+                hdbscan_model=hdbscan_model,
+                nr_topics="auto",
+                verbose=False,
+                calculate_probabilities=False,
+            )
+            topics, _ = topic_model.fit_transform(docs, embeddings=umap_embeddings)
+            _p(0.88, "BERTopic — reducing outliers...")
+            topics = topic_model.reduce_outliers(docs, topics, strategy="c-tf-idf")
+            topic_model.update_topics(docs, topics=topics)
+
+            df["topic"] = topics
+
+            def _topic_name(tid):
+                if tid == -1:
+                    return "outlier"
+                words = topic_model.get_topic(tid)
+                return "_".join(w for w, _ in words[:3]) if words else f"topic_{tid}"
+
+            df["topic_name"] = df["topic"].apply(_topic_name)
+        except ImportError as e:
+            st.warning(f"BERTopic not installed: {e}")
+        step += 1
+        progress.progress(step / n_steps, "BERTopic done.")
+
     progress.progress(1.0, "Done.")
     return df
 
@@ -525,7 +598,8 @@ def discover_datasets() -> dict:
 @st.cache_data(show_spinner=False)
 def load_single(path_str: str, is_default: bool) -> pd.DataFrame:
     path = Path(path_str)
-    if is_default:
+    already_analyzed = is_default or (CUSTOM_DIR in path.parents)
+    if already_analyzed:
         df = pd.read_csv(path, low_memory=False)
         for col in ["othering_predicted", "othering_proba", "othering_score", "toxicity"]:
             if col in df.columns:
@@ -799,6 +873,8 @@ if page == "Upload":
                                        disabled=already_processed or "toxicity" in raw.columns)
             run_emotions = st.checkbox("Run GoEmotions (slow)", value=False,
                                        disabled=already_processed or "emotion" in raw.columns)
+            run_bertopic = st.checkbox("Run BERTopic (very slow)", value=False,
+                                       disabled=already_processed or "topic" in raw.columns)
 
         if st.button("Run analysis", type="primary"):
             df_input = raw if already_processed else raw.head(max_rows)
@@ -811,7 +887,7 @@ if page == "Upload":
                             result[col] = pd.to_numeric(result[col], errors="coerce")
                     progress.progress(1.0, "Done.")
                 else:
-                    result = run_full_pipeline(df_input, run_detoxify, run_emotions, progress)
+                    result = run_full_pipeline(df_input, run_detoxify, run_emotions, run_bertopic, progress)
 
                 st.session_state["uploaded_df"] = result
                 st.session_state["upload_name"] = uploaded.name
@@ -820,10 +896,34 @@ if page == "Upload":
                 existing = st.session_state["df_combined"]
                 existing = existing[existing["dataset"] != udf["dataset"].iloc[0]]
                 st.session_state["df_combined"] = pd.concat([udf, existing], ignore_index=True)
-                st.success(f"Done — {len(result):,} posts added. Navigate to any page to explore.")
-                st.rerun()
+
+                CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+                save_path = CUSTOM_DIR / uploaded.name
+                if save_path.exists():
+                    st.session_state["_pending_overwrite"] = result
+                    st.session_state["_pending_overwrite_path"] = str(save_path)
+                else:
+                    result.to_csv(save_path, index=False)
+                    st.success(f"Done — {len(result):,} posts added. Saved to data/datasets/custom/{uploaded.name}.")
+                    st.rerun()
             except Exception as e:
                 st.error(f"Pipeline error: {e}")
+
+        if st.session_state.get("_pending_overwrite") is not None and \
+                st.session_state.get("upload_name") == uploaded.name:
+            save_path = Path(st.session_state["_pending_overwrite_path"])
+            st.warning(f"**{save_path.name}** already exists in data/datasets/custom/. Overwrite?")
+            _ow1, _ow2 = st.columns(2)
+            if _ow1.button("Overwrite", type="primary", key="_btn_overwrite"):
+                st.session_state["_pending_overwrite"].to_csv(save_path, index=False)
+                st.session_state.pop("_pending_overwrite", None)
+                st.session_state.pop("_pending_overwrite_path", None)
+                st.success(f"Saved to data/datasets/custom/{save_path.name}.")
+                st.rerun()
+            if _ow2.button("Cancel", key="_btn_cancel_overwrite"):
+                st.session_state.pop("_pending_overwrite", None)
+                st.session_state.pop("_pending_overwrite_path", None)
+                st.rerun()
 
         if "uploaded_df" in st.session_state and st.session_state.get("upload_name") == uploaded.name:
             result = st.session_state["uploaded_df"]
@@ -838,11 +938,6 @@ if page == "Upload":
                 st.download_button("Download result_analyzed.csv",
                                    data=result.to_csv(index=False).encode("utf-8"),
                                    file_name="result_analyzed.csv", mime="text/csv")
-
-    st.markdown(" ")
-    if st.button("Reload all datasets"):
-        del st.session_state["df_combined"]
-        st.rerun()
 
     st.stop()
 
