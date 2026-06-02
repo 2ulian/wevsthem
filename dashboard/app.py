@@ -1,5 +1,7 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
+import io
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
@@ -235,6 +237,33 @@ h1, h2, h3, h4 {
 .ds-pill.on  { background: rgba(124,58,237,0.25); border-color: rgba(124,58,237,0.5); color: #c4b5fd; }
 .ds-pill.off { background: transparent; color: var(--muted); }
 
+/* Analysis option cards */
+.ac-card {
+  border-radius: 8px;
+  padding: 10px 8px 10px 8px;
+  margin-bottom: 8px;
+  text-align: center;
+  transition: background 0.2s;
+}
+.ac-icon  { font-size: 20px; margin-bottom: 6px; }
+.ac-name  {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.ac-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
 /* Upload zone */
 .upload-zone {
   border: 2px dashed var(--border);
@@ -301,7 +330,37 @@ div[data-testid="stDataFrame"] { border-radius: 8px !important; overflow: hidden
   border-color: var(--border) !important;
 }
 .stAlert { border-radius: 8px !important; }
-div[data-baseweb="tab-list"] { background: var(--surface) !important; }
+/* Run analysis button — red */
+[data-baseweb="tab-panel"] [data-testid="baseButton-primary"] {
+  background: #dc2626 !important;
+  border-color: #b91c1c !important;
+}
+/* Tab buttons — bordered boxes */
+[data-baseweb="tab-list"] {
+  gap: 4px !important;
+  overflow: visible !important;
+}
+[data-baseweb="tab"] {
+  border: 1px solid var(--border) !important;
+  border-radius: 8px 8px 0 0 !important;
+  padding: 8px 18px !important;
+  background: transparent !important;
+}
+[data-baseweb="tab"][aria-selected="true"] {
+  border-color: #7c3aed !important;
+  background: rgba(124,58,237,0.12) !important;
+}
+[data-baseweb="tab"][aria-selected="true"] p {
+  color: #c4b5fd !important;
+}
+/* Tab panel frame */
+div[data-baseweb="tab-panel"] {
+  border: 1px solid var(--border) !important;
+  border-top: none !important;
+  border-radius: 0 0 10px 10px !important;
+  padding: 20px 20px 16px !important;
+  background: var(--card) !important;
+}
 
 /* Sidebar title */
 .sidebar-brand {
@@ -439,7 +498,7 @@ def detect_text_column(df: pd.DataFrame):
     return None, "not_found"
 
 
-def fast_pipeline(df: pd.DataFrame) -> pd.DataFrame:
+def fast_pipeline(df: pd.DataFrame, run_othering: bool = True) -> pd.DataFrame:
     df = df.copy()
     if "source"    not in df.columns: df["source"]    = "external"
     if "subreddit" not in df.columns: df["subreddit"] = "unknown"
@@ -448,12 +507,12 @@ def fast_pipeline(df: pd.DataFrame) -> pd.DataFrame:
     if "pronoun_type" not in df.columns:
         pron = pd.DataFrame(df["clean_text"].apply(tag_pronouns).tolist(), index=df.index)
         df = pd.concat([df, pron], axis=1)
-    if "has_othering" not in df.columns:
+    if run_othering and "has_othering" not in df.columns:
         df = apply_othering(df, text_col="clean_text")
     if "othering_predicted" not in df.columns:
-        df["othering_predicted"] = df["has_othering"].astype(int)
+        df["othering_predicted"] = df["has_othering"].astype(int) if "has_othering" in df.columns else 0
     if "othering_proba" not in df.columns:
-        df["othering_proba"] = df["othering_score"] / 4.0
+        df["othering_proba"] = df["othering_score"] / 4.0 if "othering_score" in df.columns else 0.0
     for col in ["toxicity", "severe_toxicity", "identity_attack", "insult", "threat", "emotion", "emotion_score"]:
         if col not in df.columns:
             df[col] = np.nan
@@ -463,15 +522,15 @@ def fast_pipeline(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def run_full_pipeline(df: pd.DataFrame, run_detoxify: bool, run_emotions: bool,
-                      run_bertopic: bool, progress) -> pd.DataFrame:
+def run_full_pipeline(df: pd.DataFrame, run_othering: bool, run_detoxify: bool,
+                      run_emotions: bool, run_bertopic: bool, progress) -> pd.DataFrame:
     n_steps = 1 + run_detoxify + run_emotions + run_bertopic
     step = 0
 
     def _p(frac, msg):
         progress.progress((step + frac) / n_steps, msg)
 
-    df = fast_pipeline(df)
+    df = fast_pipeline(df, run_othering=run_othering)
     step += 1
     progress.progress(step / n_steps, "Base analysis done.")
 
@@ -746,10 +805,6 @@ with st.sidebar:
         if _labels:
             _propagate_group(f"_grp_{_group}", f"_grp_was_{_group}", _labels)
 
-    _imported_labels = sorted(l for l in all_dataset_labels if l.startswith("Imported  ·  "))
-    if _imported_labels:
-        _propagate_group("_grp_Imported", "_grp_was_Imported", _imported_labels)
-
     _n_total   = len(all_dataset_labels)
     _n_checked = sum(1 for _l in all_dataset_labels if st.session_state.get(f"_ds_{_l}", True))
     _ds_label  = f"Datasets · {_n_checked} / {_n_total}"
@@ -782,18 +837,6 @@ with st.sidebar:
                         selected_datasets.append(_lbl)
             st.markdown(" ")
 
-        if _imported_labels:
-            st.checkbox("▲ IMPORTED", key="_grp_Imported")
-            _, _col = st.columns([0.08, 0.92])
-            with _col:
-                for _lbl in _imported_labels:
-                    _count = _ds_counts.get(_lbl, 0)
-                    _short = re.sub(r"\.(csv|xlsx)$", "", _lbl.split("  ·  ")[-1])
-                    _display = f"{_short}" + (f"  ·  {_count:,}" if _count else "")
-                    if st.checkbox(_display, value=True, key=f"_ds_{_lbl}"):
-                        selected_datasets.append(_lbl)
-            st.markdown(" ")
-
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
     # Search & filter
@@ -817,130 +860,251 @@ page = st.session_state["page"]
 
 if page == "Upload":
     st.markdown('<div class="page-title">Upload & Analyze</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Drop any CSV — text column detected automatically</div>',
+    st.markdown('<div class="page-subtitle">Drop one or more CSVs — text column auto-detected</div>',
                 unsafe_allow_html=True)
 
-    uploaded = st.file_uploader("", type=["csv"], label_visibility="collapsed")
-
-    if uploaded is not None:
-        try:
-            raw = pd.read_csv(uploaded, low_memory=False)
-        except Exception as e:
-            st.error(f"Could not read file: {e}")
-            st.stop()
-
-        st.markdown(f"""
-        <div class="post-card">
-          <strong>{uploaded.name}</strong>
-          <div class="meta">
-            <span>{len(raw):,} rows</span>
-            <span>{len(raw.columns)} columns</span>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        detected_col, confidence = detect_text_column(raw)
-        str_cols = raw.select_dtypes(include="object").columns.tolist()
-
-        if confidence == "not_found":
-            st.error("No text column found. Select one manually.")
-            text_col = st.selectbox("Column to use as text", options=raw.columns.tolist())
-        elif confidence == "ambiguous":
-            st.warning(f"Multiple text-like columns. Best guess: `{detected_col}`")
-            text_col = st.selectbox("Column to use as text", options=str_cols,
-                                    index=str_cols.index(detected_col) if detected_col in str_cols else 0)
-        else:
-            lbl = {"exact": "exact match", "case-insensitive": "case-insensitive",
-                   "inferred": "inferred from content"}[confidence]
-            st.info(f"Text column: **`{detected_col}`** ({lbl})")
-            text_col = st.selectbox("Column", options=str_cols,
-                                    index=str_cols.index(detected_col) if detected_col in str_cols else 0,
+    # ── File uploader ─────────────────────────────────────────────────────────
+    _cur_uploads = st.file_uploader("", type=["csv"], accept_multiple_files=True,
                                     label_visibility="collapsed")
 
-        if text_col != "text":
-            raw = raw.rename(columns={text_col: "text"})
+    if _cur_uploads:
+        def _tab_icon(fname):
+            fl = fname.lower()
+            if "tiktok" in fl:   return "▶ "
+            if "twitter" in fl or "tweet" in fl or "_x_" in fl: return "◆ "
+            if "instagram" in fl or "insta" in fl: return "◎ "
+            if "reddit" in fl:   return "◈ "
+            if "youtube" in fl:  return "▷ "
+            if "facebook" in fl or "fb_" in fl: return "◉ "
+            return ""
 
-        with st.expander("Preview (5 rows)"):
-            st.dataframe(raw.head(), use_container_width=True)
+        _tab_labels = []
+        for _uf in _cur_uploads:
+            _short = _uf.name[:-4] if _uf.name.endswith(".csv") else _uf.name
+            _short = (_short[:24] + "…") if len(_short) > 24 else _short
+            _tab_labels.append(f"{_tab_icon(_uf.name)}{_short}")
 
-        already_processed = all(c in raw.columns for c in ["has_othering", "othering_predicted", "pronoun_type"])
-        if already_processed:
-            st.info("File already contains analysis columns.")
+        _tabs = st.tabs(_tab_labels)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            max_rows = st.slider("Max rows", min_value=100, max_value=min(50_000, len(raw)),
-                                 value=min(5_000, len(raw)), step=100, disabled=already_processed)
-        with col2:
-            run_detoxify = st.checkbox("Run Detoxify (slow)", value=False,
-                                       disabled=already_processed or "toxicity" in raw.columns)
-            run_emotions = st.checkbox("Run GoEmotions (slow)", value=False,
-                                       disabled=already_processed or "emotion" in raw.columns)
-            run_bertopic = st.checkbox("Run BERTopic (very slow)", value=False,
-                                       disabled=already_processed or "topic" in raw.columns)
+        def _ac_html(icon, name, done, active):
+            if active:
+                bg = "rgba(124,58,237,0.18)"
+                badge_bg, badge_color = "rgba(124,58,237,0.35)", "#c4b5fd"
+                status = "→ will run"
+            elif done:
+                bg = "rgba(16,185,129,0.12)"
+                badge_bg, badge_color = "rgba(16,185,129,0.22)", "#34d399"
+                status = "✓ done"
+            else:
+                bg = "rgba(112,112,160,0.06)"
+                badge_bg, badge_color = "rgba(112,112,160,0.10)", "var(--muted)"
+                status = "optional"
+            return (f'<div class="ac-card" style="background:{bg};">'
+                    f'<div class="ac-icon">{icon}</div>'
+                    f'<div class="ac-name">{name}</div>'
+                    f'<div class="ac-badge" style="background:{badge_bg};color:{badge_color};">'
+                    f'{status}</div>'
+                    f'</div>')
 
-        if st.button("Run analysis", type="primary"):
-            df_input = raw if already_processed else raw.head(max_rows)
-            progress = st.progress(0.0, "Starting...")
+        _dyn_css = (
+            '[data-testid="stVerticalBlock"]:has(.ac-card){'
+            'border:1px solid var(--border);border-radius:10px;padding:12px 12px 10px;}'
+            '[data-testid="stVerticalBlock"]:has(.ac-card) .stCheckbox{'
+            'background:transparent!important;display:flex!important;justify-content:center!important;}'
+        )
+        st.markdown(f'<style>{_dyn_css}</style>', unsafe_allow_html=True)
+
+        for _tab, _uf in zip(_tabs, _cur_uploads):
+            with _tab:
+                _fname = _uf.name
+                _fkey = re.sub(r"[^a-zA-Z0-9]", "_", _fname)
+                try:
+                    raw = pd.read_csv(io.BytesIO(_uf.getvalue()), low_memory=False)
+                except Exception as e:
+                    st.error(f"Could not read {_fname}: {e}")
+                    continue
+
+                # Text column detection
+                detected_col, confidence = detect_text_column(raw)
+                str_cols = raw.select_dtypes(include="object").columns.tolist()
+
+                if confidence == "not_found":
+                    _hint = "❌  No column detected — select manually"
+                    _hint_color = "var(--danger, #f87171)"
+                    _col_opts = raw.columns.tolist()
+                    _col_idx = 0
+                elif confidence == "ambiguous":
+                    _hint = f"⚠  Multiple candidates — best guess: <code>{detected_col}</code>"
+                    _hint_color = "#f59e0b"
+                    _col_opts = str_cols
+                    _col_idx = str_cols.index(detected_col) if detected_col in str_cols else 0
+                else:
+                    _lbl = {"exact": "exact match", "case-insensitive": "case-insensitive",
+                            "inferred": "inferred from content"}[confidence]
+                    _hint = f"✓  Auto-detected — <code>{detected_col}</code> ({_lbl})"
+                    _hint_color = "#34d399"
+                    _col_opts = str_cols
+                    _col_idx = str_cols.index(detected_col) if detected_col in str_cols else 0
+
+                st.markdown(f"""
+                <div style="margin:16px 0 4px 0;">
+                  <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;
+                              letter-spacing:.06em;text-transform:uppercase;color:var(--text);
+                              margin-bottom:4px;">Text column</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:{_hint_color};">
+                    {_hint}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                text_col = st.selectbox("Text column", options=_col_opts, index=_col_idx,
+                                        label_visibility="collapsed", key=f"tc_{_fkey}")
+
+                if text_col != "text":
+                    if "text" in raw.columns:
+                        raw = raw.drop(columns=["text"])
+                    raw = raw.rename(columns={text_col: "text"})
+
+                with st.expander("Preview (5 rows)"):
+                    st.dataframe(raw.head(), use_container_width=True)
+
+                already_processed = all(c in raw.columns for c in ["has_othering", "othering_predicted", "pronoun_type"])
+                _has_tox = "toxicity" in raw.columns
+                _has_emo  = "emotion" in raw.columns
+                _has_ber  = "topic" in raw.columns and "topic_name" in raw.columns
+
+                _slider_key = f"mr_{_fkey}"
+                _n = len(raw)
+                if _n > 100:
+                    _maxv = min(50_000, _n)
+                    if _slider_key not in st.session_state:
+                        st.session_state[_slider_key] = _maxv
+                    max_rows = st.slider("Max rows", min_value=100, max_value=_maxv,
+                                         step=100, key=_slider_key)
+                else:
+                    max_rows = _n
+
+                _run_oth = st.session_state.get(f"_tog_othering_{_fkey}", False) and not already_processed
+                _run_det = st.session_state.get(f"_tog_detoxify_{_fkey}", False) and not _has_tox
+                _run_emo = st.session_state.get(f"_tog_emotions_{_fkey}",  False) and not _has_emo
+                _run_ber = st.session_state.get(f"_tog_bertopic_{_fkey}",  False) and not _has_ber
+
+                st.markdown(" ")
+                _ca, _cb, _cc, _cd = st.columns(4)
+                with _ca:
+                    st.markdown(_ac_html("◆", "Othering", already_processed, _run_oth), unsafe_allow_html=True)
+                    run_othering = st.toggle("Run Othering",   value=False, disabled=already_processed, key=f"_tog_othering_{_fkey}")
+                with _cb:
+                    st.markdown(_ac_html("◎", "Toxicity", _has_tox, _run_det), unsafe_allow_html=True)
+                    run_detoxify = st.toggle("Run Detoxify",   value=False, disabled=_has_tox,           key=f"_tog_detoxify_{_fkey}")
+                with _cc:
+                    st.markdown(_ac_html("◉", "Emotions", _has_emo, _run_emo), unsafe_allow_html=True)
+                    run_emotions = st.toggle("Run GoEmotions", value=False, disabled=_has_emo,           key=f"_tog_emotions_{_fkey}")
+                with _cd:
+                    st.markdown(_ac_html("▶", "BERTopic", _has_ber, _run_ber), unsafe_allow_html=True)
+                    run_bertopic = st.toggle("Run BERTopic",   value=False, disabled=_has_ber,           key=f"_tog_bertopic_{_fkey}")
+
+                _, _run_col, _ = st.columns([1, 2, 1])
+                with _run_col:
+                    _do_run = st.button("Run analysis", type="primary", key=f"run_{_fkey}", use_container_width=True)
+                components.html(
+                    "<script>"
+                    "var p=window.parent.document;"
+                    "function paint(){"
+                    "p.querySelectorAll('[data-testid=\"baseButton-primary\"]').forEach(function(b){"
+                    "b.style.setProperty('background-color','#dc2626','important');"
+                    "b.style.setProperty('border-color','#b91c1c','important');});}"
+                    "paint();setTimeout(paint,80);setTimeout(paint,300);"
+                    "</script>",
+                    height=0
+                )
+                if _do_run:
+                    df_input = raw.head(max_rows)
+                    progress = st.progress(0.0, "Starting...")
+                    try:
+                        result = run_full_pipeline(df_input, run_othering, run_detoxify, run_emotions, run_bertopic, progress)
+                        st.session_state[f"uploaded_df_{_fkey}"] = result
+                        udf = result.copy()
+                        udf["dataset"] = f"Imported  ·  {_fname}"
+                        existing = st.session_state["df_combined"]
+                        existing = existing[existing["dataset"] != udf["dataset"].iloc[0]]
+                        st.session_state["df_combined"] = pd.concat([udf, existing], ignore_index=True)
+                        CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+                        save_path = CUSTOM_DIR / _fname
+                        if save_path.exists():
+                            st.session_state[f"_pending_overwrite_{_fkey}"] = result
+                            st.session_state[f"_pending_overwrite_path_{_fkey}"] = str(save_path)
+                        else:
+                            result.to_csv(save_path, index=False)
+                            st.success(f"Done — {len(result):,} rows added. Saved to data/datasets/imported/{_fname}.")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Pipeline error: {e}")
+
+                if st.session_state.get(f"_pending_overwrite_{_fkey}") is not None:
+                    save_path = Path(st.session_state[f"_pending_overwrite_path_{_fkey}"])
+                    st.warning(f"**{save_path.name}** already exists. Overwrite?")
+                    _, _ow1, _ow2, _ = st.columns([1, 2, 2, 1])
+                    if _ow1.button("Overwrite", type="secondary", key=f"_btn_overwrite_{_fkey}", use_container_width=True):
+                        st.session_state[f"_pending_overwrite_{_fkey}"].to_csv(save_path, index=False)
+                        st.session_state.pop(f"_pending_overwrite_{_fkey}", None)
+                        st.session_state.pop(f"_pending_overwrite_path_{_fkey}", None)
+                        st.success(f"Saved to data/datasets/imported/{save_path.name}.")
+                        st.rerun()
+                    if _ow2.button("Cancel", key=f"_btn_cancel_overwrite_{_fkey}", use_container_width=True):
+                        st.session_state.pop(f"_pending_overwrite_{_fkey}", None)
+                        st.session_state.pop(f"_pending_overwrite_path_{_fkey}", None)
+                        st.rerun()
+
+                if f"uploaded_df_{_fkey}" in st.session_state:
+                    result = st.session_state[f"uploaded_df_{_fkey}"]
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Rows", f"{len(result):,}")
+                    c2.metric("% Othering", f"{result['othering_predicted'].mean()*100:.1f}%")
+                    tox = result["toxicity"].mean() if result["toxicity"].notna().any() else None
+                    c3.metric("Avg toxicity", f"{tox:.3f}" if tox else "n/a")
+                    c4.metric("% Them markers",
+                              f"{result['pronoun_type'].isin(['them_only','both']).mean()*100:.1f}%")
+                    with st.expander("Download result"):
+                        st.download_button("Download CSV",
+                                           data=result.to_csv(index=False).encode("utf-8"),
+                                           file_name=f"{_fname[:-4]}_analyzed.csv",
+                                           mime="text/csv", key=f"dl_{_fkey}")
+
+    # ── Manage imported datasets ──────────────────────────────────────────────
+    imported_files = sorted(CUSTOM_DIR.glob("*.csv")) if CUSTOM_DIR.exists() else []
+    if imported_files:
+        st.markdown(" ")
+        st.markdown('<div class="section-header">Imported datasets</div>', unsafe_allow_html=True)
+
+        for _f in imported_files:
+            if st.session_state.get(f"_del_{_f.name}"):
+                _f.unlink()
+                del st.session_state["df_combined"]
+                st.session_state.pop(f"_del_{_f.name}", None)
+                st.rerun()
+
+        _hdr_file, _hdr_oth, _hdr_tox, _hdr_emo, _hdr_ber, _hdr_del = st.columns([3, 1, 1, 1, 1, 1])
+        _hdr_file.markdown("**File**")
+        _hdr_oth.markdown("**Othering**")
+        _hdr_tox.markdown("**Toxicity**")
+        _hdr_emo.markdown("**Emotions**")
+        _hdr_ber.markdown("**BERTopic**")
+
+        for _f in imported_files:
             try:
-                if already_processed:
-                    result = df_input.copy()
-                    for col in ["toxicity", "othering_proba", "othering_score"]:
-                        if col in result.columns:
-                            result[col] = pd.to_numeric(result[col], errors="coerce")
-                    progress.progress(1.0, "Done.")
-                else:
-                    result = run_full_pipeline(df_input, run_detoxify, run_emotions, run_bertopic, progress)
-
-                st.session_state["uploaded_df"] = result
-                st.session_state["upload_name"] = uploaded.name
-                udf = result.copy()
-                udf["dataset"] = f"Imported  ·  {uploaded.name}"
-                existing = st.session_state["df_combined"]
-                existing = existing[existing["dataset"] != udf["dataset"].iloc[0]]
-                st.session_state["df_combined"] = pd.concat([udf, existing], ignore_index=True)
-
-                CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
-                save_path = CUSTOM_DIR / uploaded.name
-                if save_path.exists():
-                    st.session_state["_pending_overwrite"] = result
-                    st.session_state["_pending_overwrite_path"] = str(save_path)
-                else:
-                    result.to_csv(save_path, index=False)
-                    st.success(f"Done — {len(result):,} posts added. Saved to data/datasets/custom/{uploaded.name}.")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Pipeline error: {e}")
-
-        if st.session_state.get("_pending_overwrite") is not None and \
-                st.session_state.get("upload_name") == uploaded.name:
-            save_path = Path(st.session_state["_pending_overwrite_path"])
-            st.warning(f"**{save_path.name}** already exists in data/datasets/custom/. Overwrite?")
-            _ow1, _ow2 = st.columns(2)
-            if _ow1.button("Overwrite", type="primary", key="_btn_overwrite"):
-                st.session_state["_pending_overwrite"].to_csv(save_path, index=False)
-                st.session_state.pop("_pending_overwrite", None)
-                st.session_state.pop("_pending_overwrite_path", None)
-                st.success(f"Saved to data/datasets/custom/{save_path.name}.")
-                st.rerun()
-            if _ow2.button("Cancel", key="_btn_cancel_overwrite"):
-                st.session_state.pop("_pending_overwrite", None)
-                st.session_state.pop("_pending_overwrite_path", None)
-                st.rerun()
-
-        if "uploaded_df" in st.session_state and st.session_state.get("upload_name") == uploaded.name:
-            result = st.session_state["uploaded_df"]
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Rows", f"{len(result):,}")
-            c2.metric("% Othering", f"{result['othering_predicted'].mean()*100:.1f}%")
-            tox = result["toxicity"].mean() if result["toxicity"].notna().any() else None
-            c3.metric("Avg toxicity", f"{tox:.3f}" if tox else "n/a")
-            c4.metric("% Them markers",
-                      f"{result['pronoun_type'].isin(['them_only','both']).mean()*100:.1f}%")
-            with st.expander("Download result"):
-                st.download_button("Download result_analyzed.csv",
-                                   data=result.to_csv(index=False).encode("utf-8"),
-                                   file_name="result_analyzed.csv", mime="text/csv")
+                _cols = set(pd.read_csv(_f, nrows=0).columns)
+            except Exception:
+                _cols = set()
+            _has_oth = {"has_othering", "othering_predicted", "pronoun_type"}.issubset(_cols)
+            _has_tox = "toxicity" in _cols
+            _has_emo = "emotion" in _cols
+            _has_ber = "topic" in _cols and "topic_name" in _cols
+            _c_file, _c_oth, _c_tox, _c_emo, _c_ber, _c_del = st.columns([3, 1, 1, 1, 1, 1])
+            _c_file.markdown(f"`{_f.name}`")
+            _c_oth.markdown("✓" if _has_oth else "–")
+            _c_tox.markdown("✓" if _has_tox else "–")
+            _c_emo.markdown("✓" if _has_emo else "–")
+            _c_ber.markdown("✓" if _has_ber else "–")
+            _c_del.button("Delete", key=f"_del_{_f.name}", use_container_width=True)
 
     st.stop()
 

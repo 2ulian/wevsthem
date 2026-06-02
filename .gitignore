@@ -39,7 +39,7 @@ reports/figures/
 reports/platform_comparison.csv
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
 
 # Environment variables
 .env
