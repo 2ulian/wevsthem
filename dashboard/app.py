@@ -250,15 +250,15 @@ h1, h2, h3, h4 {
   position: absolute;
   top: 7px;
   right: 7px;
-  width: 17px;
-  height: 17px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   border: 1px solid rgba(112,112,160,0.35);
   background: rgba(112,112,160,0.08);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 12px;
   font-family: 'IBM Plex Mono', monospace;
   color: #70709f;
   cursor: pointer;
@@ -318,7 +318,7 @@ h1, h2, h3, h4 {
   top: 10px; right: 12px;
   cursor: pointer;
   color: #70709f;
-  font-size: 13px;
+  font-size: 12px;
   width: 22px; height: 22px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%;
