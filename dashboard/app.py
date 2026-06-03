@@ -821,6 +821,30 @@ def discover_datasets() -> dict:
     return groups
 
 
+_DATE_COL_NAMES = [
+    "createTimeISO", "createdAt", "Timestamp", "timestamp", "created_at",
+    "date", "Date", "datetime", "childCommentDate", "date Parent", "posted_at",
+]
+_DATE_FORMATS = [
+    "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ",
+    "%a %b %d %H:%M:%S %z %Y",
+    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d",
+]
+
+def _parse_date_col(df: pd.DataFrame) -> pd.Series | None:
+    for col in _DATE_COL_NAMES:
+        if col not in df.columns:
+            continue
+        s = df[col].dropna()
+        if s.empty:
+            continue
+        parsed = pd.to_datetime(s, format="mixed", errors="coerce", utc=True)
+        if parsed.notna().sum() / len(s) >= 0.5:
+            result = pd.to_datetime(df[col], format="mixed", errors="coerce", utc=True)
+            return result.dt.tz_localize(None)
+    return None
+
+
 @st.cache_data(show_spinner=False)
 def load_single(path_str: str, is_default: bool) -> pd.DataFrame:
     path = Path(path_str)
@@ -849,6 +873,10 @@ def load_single(path_str: str, is_default: bool) -> pd.DataFrame:
         elif col is None:
             df["text"] = ""
         df = fast_pipeline(df)
+    if "post_date" not in df.columns:
+        parsed = _parse_date_col(df)
+        if parsed is not None:
+            df["post_date"] = parsed
     return df
 
 
@@ -904,6 +932,7 @@ PAGES = [
     ("Toxicity",  "◎"),
     ("Emotions",  "◉"),
     ("Othering",  "◆"),
+    ("Temporal",  "◷"),
 ]
 PAGE_UPLOAD = ("Upload", "▲")
 
@@ -1939,3 +1968,291 @@ elif page == "Othering":
         st.plotly_chart(fig_t, use_container_width=True)
     else:
         st.info("No BERTopic data in the current selection.")
+
+
+# ── Temporal ──────────────────────────────────────────────────────────────────
+
+elif page == "Temporal":
+    from events import load_curated, load_all_events, event_study as _event_study
+
+    st.markdown('<div class="page-title">Temporal Analysis</div>', unsafe_allow_html=True)
+
+    if "post_date" not in df.columns:
+        st.info("No date column detected in the current dataset selection. Load a dataset with a date column (TikTok, Twitter, Instagram).")
+        st.stop()
+
+    df_t = df.dropna(subset=["post_date"]).copy()
+    df_t["post_date"] = pd.to_datetime(df_t["post_date"], errors="coerce")
+    df_t = df_t.dropna(subset=["post_date"])
+
+    if df_t.empty:
+        st.info("Date column found but no parseable values.")
+        st.stop()
+
+    date_min = df_t["post_date"].min().date()
+    date_max = df_t["post_date"].max().date()
+    n_with_date = len(df_t)
+
+    st.markdown(
+        f'<div class="page-subtitle">'
+        f'{n_with_date:,} posts with dates · {date_min} → {date_max} · '
+        f'{df_t["dataset"].nunique()} dataset(s)'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Load events
+    _evt_df = load_curated(BASE_DIR / "data" / "events" / "curated_events.csv")
+    _acled_email    = st.secrets.get("ACLED_EMAIL",    None) if hasattr(st, "secrets") else None
+    _acled_password = st.secrets.get("ACLED_PASSWORD", None) if hasattr(st, "secrets") else None
+    if _acled_email and _acled_password:
+        try:
+            from events import fetch_acled as _fetch_acled
+            _acled_df = _fetch_acled(_acled_email, _acled_password,
+                                     date_range_start=str(date_min),
+                                     date_range_end=str(date_max))
+            _evt_df = pd.concat([_evt_df, _acled_df], ignore_index=True)
+        except Exception:
+            pass
+
+    _evt_in_range = _evt_df[
+        (_evt_df["date"].dt.date >= date_min) &
+        (_evt_df["date"].dt.date <= date_max)
+    ].copy()
+
+    _colors = ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b", "#e11d48", "#a855f7"]
+
+    _tab_timeline, _tab_study = st.tabs(["Timeline", "Event Study"])
+
+    # ── TAB 1 : Timeline ─────────────────────────────────────────────────────
+    with _tab_timeline:
+        _tc1, _tc2 = st.columns(2)
+        with _tc1:
+            granularity = st.selectbox("Granularity", ["Week", "Month", "Day"], index=1)
+        with _tc2:
+            show_events = st.checkbox("Show public events", value=True)
+
+        _freq = {"Day": "D", "Week": "W", "Month": "M"}[granularity]
+        df_t["period"] = df_t["post_date"].dt.to_period(_freq).dt.to_timestamp()
+
+        _agg = (
+            df_t.groupby(["period", "dataset"])
+            .agg(posts=("text", "count"),
+                 othering_rate=("othering_predicted", "mean"),
+                 toxicity_mean=("toxicity", "mean"))
+            .reset_index()
+        )
+        _agg["short_ds"] = _agg["dataset"].apply(
+            lambda x: re.sub(r"\.(csv|xlsx)$", "", x.split("  ·  ")[-1]) if "  ·  " in x else x
+        )
+        _datasets = sorted(_agg["short_ds"].unique())
+        _ds_color = {ds: _colors[i % len(_colors)] for i, ds in enumerate(_datasets)}
+
+        def _add_event_lines(fig):
+            if show_events and not _evt_in_range.empty:
+                for _, _ev in _evt_in_range.iterrows():
+                    fig.add_vline(x=_ev["date"], line=dict(color="rgba(226,226,240,0.18)", width=1, dash="dot"))
+                    fig.add_annotation(x=_ev["date"], y=1, yref="paper", text=_ev["title"],
+                        textangle=-90, font=dict(size=9, color="#70709f"),
+                        showarrow=False, xanchor="left", yanchor="top")
+
+        # Volume
+        st.markdown('<div class="section-header">Post volume over time</div>', unsafe_allow_html=True)
+        fig_vol = go.Figure()
+        for ds in _datasets:
+            _sub = _agg[_agg["short_ds"] == ds].sort_values("period")
+            _c = _ds_color[ds]
+            _rgba = f"rgba({int(_c[1:3],16)},{int(_c[3:5],16)},{int(_c[5:7],16)},0.07)"
+            fig_vol.add_trace(go.Scatter(x=_sub["period"], y=_sub["posts"],
+                mode="lines", name=ds, line=dict(color=_c, width=2),
+                fill="tozeroy", fillcolor=_rgba))
+        _add_event_lines(fig_vol)
+        apply_theme(fig_vol, height=280)
+        fig_vol.update_layout(xaxis_title="", yaxis_title="Posts", legend=dict(orientation="h", y=1.08))
+        st.plotly_chart(fig_vol, use_container_width=True)
+
+        # Othering rate
+        st.markdown('<div class="section-header">Othering rate over time</div>', unsafe_allow_html=True)
+        fig_oth = go.Figure()
+        for ds in _datasets:
+            _sub = _agg[_agg["short_ds"] == ds].sort_values("period")
+            _y = _sub["othering_rate"] * 100
+            if _y.notna().sum() == 0:
+                continue
+            _mean, _std = _y.mean(), _y.std()
+            fig_oth.add_trace(go.Scatter(x=_sub["period"], y=_y, mode="lines", name=ds,
+                line=dict(color=_ds_color[ds], width=2)))
+            _spikes = _sub[_y > _mean + 1.5 * _std]
+            if not _spikes.empty:
+                fig_oth.add_trace(go.Scatter(x=_spikes["period"], y=_spikes["othering_rate"]*100,
+                    mode="markers", showlegend=False,
+                    marker=dict(color="#e11d48", size=8, symbol="diamond")))
+        _add_event_lines(fig_oth)
+        apply_theme(fig_oth, height=280)
+        fig_oth.update_layout(xaxis_title="", yaxis_title="% othering", legend=dict(orientation="h", y=1.08))
+        st.plotly_chart(fig_oth, use_container_width=True)
+
+        # Toxicity
+        if df_t["toxicity"].notna().any():
+            st.markdown('<div class="section-header">Mean toxicity over time</div>', unsafe_allow_html=True)
+            fig_tox = go.Figure()
+            for ds in _datasets:
+                _sub = _agg[(_agg["short_ds"] == ds) & _agg["toxicity_mean"].notna()].sort_values("period")
+                if _sub.empty:
+                    continue
+                fig_tox.add_trace(go.Scatter(x=_sub["period"], y=_sub["toxicity_mean"],
+                    mode="lines", name=ds, line=dict(color=_ds_color[ds], width=2)))
+            _add_event_lines(fig_tox)
+            apply_theme(fig_tox, height=260)
+            fig_tox.update_layout(xaxis_title="", yaxis_title="Mean toxicity", legend=dict(orientation="h", y=1.08))
+            st.plotly_chart(fig_tox, use_container_width=True)
+
+        # Spike table
+        st.markdown('<div class="section-header">Detected spikes (othering rate > mean + 1.5σ)</div>', unsafe_allow_html=True)
+        _spike_rows = []
+        for ds in _datasets:
+            _sub = _agg[_agg["short_ds"] == ds].sort_values("period").copy()
+            _y = _sub["othering_rate"] * 100
+            if _y.std() == 0 or _y.notna().sum() < 3:
+                continue
+            _mean, _std = _y.mean(), _y.std()
+            for _, _row in _sub[_y > _mean + 1.5 * _std].iterrows():
+                _ts = pd.Timestamp(_row["period"])
+                _near = _evt_df.copy()
+                _near["_dist"] = (_near["date"] - _ts).abs().dt.days
+                _near = _near[_near["_dist"] <= 45]
+                _evt_label = _near.sort_values("_dist")["title"].iloc[0] if not _near.empty else ""
+                _spike_rows.append({
+                    "Period": str(_row["period"])[:10],
+                    "Dataset": ds,
+                    "Posts": int(_row["posts"]),
+                    "Othering %": f'{_row["othering_rate"]*100:.1f}%',
+                    "vs mean": f'+{_row["othering_rate"]*100 - _mean:.1f}pp',
+                    "Nearest event (±45d)": _evt_label,
+                })
+        if _spike_rows:
+            st.dataframe(pd.DataFrame(_spike_rows), use_container_width=True, hide_index=True)
+        else:
+            st.markdown('<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#70709f;">No significant spikes detected.</div>', unsafe_allow_html=True)
+
+    # ── TAB 2 : Event Study ──────────────────────────────────────────────────
+    with _tab_study:
+        st.markdown(
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#70709f;margin-bottom:12px;">'
+            'For each selected event, shows daily metric deviation from the global mean '
+            'in a ±N day window. Reveals whether language spikes before, during, or after events.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        _es1, _es2, _es3 = st.columns(3)
+        with _es1:
+            _es_window = st.slider("Window (days each side)", 3, 30, 14)
+        with _es2:
+            _es_metric = st.selectbox("Metric", ["othering_predicted", "toxicity"],
+                format_func=lambda x: "Othering rate" if x == "othering_predicted" else "Toxicity")
+        with _es3:
+            _es_cats = st.multiselect("Event categories", sorted(_evt_df["category"].dropna().unique()),
+                default=sorted(_evt_df["category"].dropna().unique()))
+
+        _evt_filtered = _evt_df[_evt_df["category"].isin(_es_cats)] if _es_cats else _evt_df
+        _evt_options  = _evt_filtered.sort_values("date")["title"].tolist()
+
+        if not _evt_options:
+            st.info("No events match the selected categories.")
+        else:
+            _selected_evts = st.multiselect("Select events to analyse", _evt_options,
+                default=_evt_options[:min(5, len(_evt_options))])
+
+            if _selected_evts:
+                _evts_to_study = _evt_filtered[_evt_filtered["title"].isin(_selected_evts)]
+                _es_result = _event_study(df_t, _evts_to_study,
+                                          window_days=_es_window,
+                                          metric_cols=[_es_metric])
+
+                if _es_result.empty:
+                    st.info("Not enough post data in the windows around the selected events.")
+                else:
+                    _metric_dev = f"{_es_metric}_deviation"
+                    _metric_val = _es_metric
+                    _ylabel_dev = ("Othering rate deviation (pp)" if _es_metric == "othering_predicted"
+                                   else "Toxicity deviation")
+                    _scale = 100 if _es_metric == "othering_predicted" else 1
+
+                    # Individual event windows
+                    st.markdown('<div class="section-header">Deviation from global mean per event</div>', unsafe_allow_html=True)
+                    fig_es = go.Figure()
+                    for i, evt_title in enumerate(_selected_evts):
+                        _sub = _es_result[_es_result["event_title"] == evt_title].sort_values("day_offset")
+                        if _sub.empty:
+                            continue
+                        _col = _colors[i % len(_colors)]
+                        fig_es.add_trace(go.Scatter(
+                            x=_sub["day_offset"],
+                            y=_sub[_metric_dev] * _scale,
+                            mode="lines+markers",
+                            name=evt_title[:50],
+                            line=dict(color=_col, width=2),
+                            marker=dict(size=4),
+                        ))
+                    fig_es.add_hline(y=0, line=dict(color="rgba(226,226,240,0.3)", width=1, dash="dash"))
+                    fig_es.add_vline(x=0, line=dict(color="rgba(226,226,240,0.5)", width=1, dash="dot"))
+                    fig_es.add_annotation(x=0, y=1, yref="paper", text="event day",
+                        font=dict(size=9, color="#70709f"), showarrow=False, xanchor="left")
+                    apply_theme(fig_es, height=340)
+                    fig_es.update_layout(
+                        xaxis_title="Days relative to event",
+                        yaxis_title=_ylabel_dev,
+                        legend=dict(orientation="h", y=1.1),
+                    )
+                    st.plotly_chart(fig_es, use_container_width=True)
+
+                    # Average effect across all selected events
+                    if len(_selected_evts) > 1:
+                        st.markdown('<div class="section-header">Average effect across selected events</div>', unsafe_allow_html=True)
+                        _avg = (_es_result.groupby("day_offset")[_metric_dev]
+                                .agg(mean="mean", std="std", n="count").reset_index())
+                        _avg["upper"] = (_avg["mean"] + _avg["std"]) * _scale
+                        _avg["lower"] = (_avg["mean"] - _avg["std"]) * _scale
+                        _avg["mean_s"] = _avg["mean"] * _scale
+
+                        fig_avg = go.Figure()
+                        fig_avg.add_trace(go.Scatter(
+                            x=pd.concat([_avg["day_offset"], _avg["day_offset"][::-1]]),
+                            y=pd.concat([_avg["upper"], _avg["lower"][::-1]]),
+                            fill="toself",
+                            fillcolor="rgba(124,58,237,0.12)",
+                            line=dict(color="rgba(0,0,0,0)"),
+                            showlegend=False, name="±1σ",
+                        ))
+                        fig_avg.add_trace(go.Scatter(
+                            x=_avg["day_offset"], y=_avg["mean_s"],
+                            mode="lines", name="mean deviation",
+                            line=dict(color="#7c3aed", width=2),
+                        ))
+                        fig_avg.add_hline(y=0, line=dict(color="rgba(226,226,240,0.3)", width=1, dash="dash"))
+                        fig_avg.add_vline(x=0, line=dict(color="rgba(226,226,240,0.5)", width=1, dash="dot"))
+                        apply_theme(fig_avg, height=300)
+                        fig_avg.update_layout(
+                            xaxis_title="Days relative to event",
+                            yaxis_title=f"Avg {_ylabel_dev}",
+                        )
+                        st.plotly_chart(fig_avg, use_container_width=True)
+
+                    # Summary table
+                    st.markdown('<div class="section-header">Peak deviation per event</div>', unsafe_allow_html=True)
+                    _summary_rows = []
+                    for evt_title in _selected_evts:
+                        _sub = _es_result[_es_result["event_title"] == evt_title]
+                        if _sub.empty:
+                            continue
+                        _peak_row = _sub.loc[(_sub[_metric_dev] * _scale).abs().idxmax()]
+                        _summary_rows.append({
+                            "Event": evt_title[:60],
+                            "Date": str(_peak_row["event_date"])[:10],
+                            "Peak day offset": int(_peak_row["day_offset"]),
+                            "Peak deviation": f'{_peak_row[_metric_dev] * _scale:+.3f}',
+                            "Posts in window": int(_sub["n_posts"].sum()),
+                        })
+                    if _summary_rows:
+                        st.dataframe(pd.DataFrame(_summary_rows), use_container_width=True, hide_index=True)

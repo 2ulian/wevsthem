@@ -1,0 +1,60 @@
+date,title,category,country,region,source
+2020-01-30,WHO declares COVID-19 public health emergency,pandemic,global,global,WHO
+2020-03-11,WHO declares COVID-19 pandemic,pandemic,global,global,WHO
+2020-03-23,UK enters first national lockdown,pandemic,GBR,Europe,gov.uk
+2020-05-25,George Floyd killed — BLM protests start,protest,USA,Americas,news
+2020-06-07,Colston statue toppled in Bristol,protest,GBR,Europe,news
+2020-06-15,Black Lives Matter protests peak globally,protest,global,global,news
+2020-08-23,Jacob Blake shot — Kenosha protests,protest,USA,Americas,news
+2020-09-22,Trump refuses to commit to peaceful transfer of power,politics,USA,Americas,news
+2020-10-16,French teacher Samuel Paty beheaded,terrorism,FRA,Europe,news
+2020-11-03,US Presidential Election (Biden vs Trump),election,USA,Americas,official
+2020-11-07,Biden declared winner of US election,election,USA,Americas,news
+2020-12-31,Brexit transition period ends,politics,GBR,Europe,gov.uk
+2021-01-06,US Capitol riot,riot,USA,Americas,news
+2021-03-13,Sarah Everard vigil — police clash,protest,GBR,Europe,news
+2021-04-20,Derek Chauvin found guilty,justice,USA,Americas,news
+2021-04-22,Bristol Kill the Bill riot,riot,GBR,Europe,news
+2021-05-10,Gaza escalation — Israel-Hamas fighting,conflict,ISR,Middle East,news
+2021-06-11,G7 summit — immigration debates,politics,GBR,Europe,news
+2021-07-11,Euro 2020 final — England vs Italy,sport,GBR,Europe,news
+2021-07-12,Racist abuse after England Euro final loss,hate_incident,GBR,Europe,news
+2021-08-15,Taliban takes Kabul — Afghan refugee crisis,conflict,AFG,Asia,news
+2021-11-19,Kyle Rittenhouse acquitted,justice,USA,Americas,news
+2022-01-17,Novak Djokovic deported from Australia,politics,AUS,Oceania,news
+2022-02-24,Russia invades Ukraine,conflict,UKR,Europe,news
+2022-03-04,Ukraine refugee crisis — 1 million displaced,conflict,UKR,Europe,UNHCR
+2022-05-14,Buffalo supermarket mass shooting,violence,USA,Americas,news
+2022-05-24,Uvalde school shooting,violence,USA,Americas,news
+2022-06-24,US Supreme Court overturns Roe v Wade,politics,USA,Americas,news
+2022-07-04,Boris Johnson resigns,politics,GBR,Europe,news
+2022-08-08,FBI searches Mar-a-Lago,politics,USA,Americas,news
+2022-09-08,Queen Elizabeth II dies,politics,GBR,Europe,news
+2022-09-30,Russia annexes Ukrainian territories,conflict,UKR,Europe,news
+2022-10-13,UK cost of living protests,protest,GBR,Europe,news
+2022-11-08,US midterm elections,election,USA,Americas,official
+2022-11-19,FIFA World Cup 2022 starts (Qatar),sport,global,global,news
+2022-11-30,ChatGPT launched — AI debate explodes,technology,global,global,news
+2023-01-07,Brazil Capitol riot (Bolsonaro supporters),riot,BRA,Americas,news
+2023-01-12,Memphis police kill Tyre Nichols,violence,USA,Americas,news
+2023-03-30,Trump first criminal indictment,justice,USA,Americas,news
+2023-06-06,Wagner Group mutiny in Russia,conflict,RUS,Europe,news
+2023-06-14,Greece migrant boat disaster (700 dead),migration,GRC,Europe,news
+2023-07-07,France riots — Nahel Merzouk killing,riot,FRA,Europe,news
+2023-10-07,Hamas attacks Israel — Gaza war starts,conflict,ISR,Middle East,news
+2023-10-14,Pro-Palestine protests worldwide,protest,global,global,news
+2023-11-05,Argentina elects Milei,election,ARG,Americas,news
+2024-01-28,US-Mexico border crisis peaks,migration,USA,Americas,news
+2024-03-22,Moscow concert hall attack,terrorism,RUS,Europe,news
+2024-06-06,D-Day 80th anniversary,politics,FRA,Europe,news
+2024-06-13,French snap elections called,election,FRA,Europe,news
+2024-07-13,Trump assassination attempt,politics,USA,Americas,news
+2024-07-19,Southport stabbings — UK riots start,riot,GBR,Europe,news
+2024-07-30,UK far-right riots spread nationwide,riot,GBR,Europe,news
+2024-08-06,UK riots peak — mosques attacked,hate_incident,GBR,Europe,news
+2024-11-05,US Presidential Election (Trump vs Harris),election,USA,Americas,official
+2024-11-06,Trump wins — second term confirmed,election,USA,Americas,news
+2025-01-20,Trump inauguration — executive orders,politics,USA,Americas,gov
+2025-01-26,Trump mass deportation operations start,migration,USA,Americas,news
+2025-03-04,Trump announces tariffs on Canada/Mexico,politics,USA,Americas,news
+2025-04-02,Trump Liberation Day tariffs announcement,politics,USA,Americas,news
