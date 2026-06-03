@@ -244,7 +244,88 @@ h1, h2, h3, h4 {
   margin-bottom: 8px;
   text-align: center;
   transition: background 0.2s;
+  position: relative;
 }
+.ac-info-btn {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 1px solid rgba(112,112,160,0.35);
+  background: rgba(112,112,160,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #70709f;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  line-height: 1;
+}
+.ac-info-btn:hover {
+  border-color: #7c3aed;
+  background: rgba(124,58,237,0.15);
+  color: #c4b5fd;
+}
+.ac-info-toggle { display: none !important; }
+.ac-info-popup {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,0.55);
+  align-items: center;
+  justify-content: center;
+}
+.ac-info-toggle:checked ~ .ac-info-popup { display: flex; }
+.ac-info-backdrop {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+}
+.ac-info-box {
+  position: relative;
+  background: #16161f;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  padding: 22px 26px 18px;
+  max-width: 420px;
+  width: 90%;
+  color: #e2e2f0;
+  font-size: 12px;
+  line-height: 1.65;
+  z-index: 1;
+}
+.ac-info-box h3 {
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #c4b5fd;
+  margin: 0 0 10px;
+}
+.ac-info-box ul { padding-left: 16px; margin: 6px 0; }
+.ac-info-box li { margin-bottom: 3px; }
+.ac-info-box p { margin: 6px 0; }
+.ac-info-box b { color: #c4b5fd; }
+.ac-info-box em { color: #a0a0c0; }
+.ac-info-box code { background: rgba(124,58,237,0.12); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+.ac-info-close {
+  position: absolute;
+  top: 10px; right: 12px;
+  cursor: pointer;
+  color: #70709f;
+  font-size: 13px;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(112,112,160,0.2);
+  transition: color 0.15s, border-color 0.15s;
+}
+.ac-info-close:hover { color: #e2e2f0; border-color: rgba(112,112,160,0.5); }
 .ac-icon  { font-size: 20px; margin-bottom: 6px; }
 .ac-name  {
   font-family: 'Syne', sans-serif;
@@ -498,6 +579,55 @@ def detect_text_column(df: pd.DataFrame):
     return None, "not_found"
 
 
+_AC_INFO_HTML = {
+    "Othering": (
+        "<h3>◆ Othering detector</h3>"
+        "<p>Regex matching across <b>4 pattern families</b>:</p>"
+        "<ul>"
+        "<li><b>Dehumanising metaphors</b> — <em>invasion, swarm, flood, vermin…</em></li>"
+        "<li><b>Moral exclusion</b> — <em>go back, don't belong, send them back…</em></li>"
+        "<li><b>Generalisations</b> — <em>they all, these people always…</em></li>"
+        "<li><b>Threat framing</b> — <em>replacing us, taking over, great replacement…</em></li>"
+        "</ul>"
+        "<p>Each match adds <b>+1</b> to the othering score (0–4). "
+        "Also tags pronoun usage: <em>us-only</em>, <em>them-only</em>, or <em>both</em>.</p>"
+    ),
+    "Toxicity": (
+        "<h3>◎ Toxicity — Detoxify</h3>"
+        "<p>Multilingual <b>BERT model</b> fine-tuned on the Jigsaw Unintended Bias dataset. "
+        "Returns 6 continuous scores (0–1) per text:</p>"
+        "<ul>"
+        "<li>toxicity · severe_toxicity · obscene</li>"
+        "<li>identity_attack · insult · threat</li>"
+        "</ul>"
+        "<p>Fast CPU inference (~1 000 rows/min).</p>"
+    ),
+    "Emotions": (
+        "<h3>◉ Emotions — GoEmotions</h3>"
+        "<p>HuggingFace pipeline — BERT fine-tuned on Google's GoEmotions corpus (58K Reddit comments).</p>"
+        "<p>Returns the <b>top emotion</b> + confidence score per text across <b>28 categories</b>: "
+        "<em>admiration, amusement, anger, annoyance, approval, caring, confusion, curiosity, "
+        "desire, disappointment, disapproval, disgust, embarrassment, excitement, fear, "
+        "gratitude, grief, joy, love, nervousness, optimism, pride, realisation, relief, "
+        "remorse, sadness, surprise, neutral.</em></p>"
+        "<p>⚠ Slow on CPU — use the row slider to limit volume.</p>"
+    ),
+    "BERTopic": (
+        "<h3>▶ BERTopic</h3>"
+        "<p>Fully unsupervised topic modelling pipeline:</p>"
+        "<ul>"
+        "<li><b>SentenceTransformer</b> encodes each text into a dense embedding</li>"
+        "<li><b>UMAP</b> reduces dimensions (n_components=5, n_neighbors=15)</li>"
+        "<li><b>HDBSCAN</b> clusters the reduced embeddings</li>"
+        "<li><b>c-TF-IDF</b> extracts the most representative keywords per cluster</li>"
+        "</ul>"
+        "<p>Number of topics is <b>data-driven</b> — no manual setting needed. "
+        "Outliers are labelled topic -1.</p>"
+    ),
+}
+
+
+
 def fast_pipeline(df: pd.DataFrame, run_othering: bool = True) -> pd.DataFrame:
     df = df.copy()
     if "source"    not in df.columns: df["source"]    = "external"
@@ -558,17 +688,22 @@ def run_full_pipeline(df: pd.DataFrame, run_othering: bool, run_detoxify: bool,
     if run_emotions and df["emotion"].isna().all():
         _p(0.0, "Running GoEmotions...")
         try:
+            import torch
             from transformers import pipeline as hf_pipeline
+            _device = 0 if torch.cuda.is_available() else -1
+            _batch  = 128 if _device == 0 else 64
             pipe = hf_pipeline("text-classification",
-                               model="monologg/bert-base-cased-goemotions-original", top_k=1)
+                               model="monologg/bert-base-cased-goemotions-original",
+                               top_k=1, device=_device,
+                               truncation=True, max_length=128)
             texts = df["clean_text"].str[:512].tolist()
             emotions, scores = [], []
-            for i in range(0, len(texts), 16):
-                res = pipe(texts[i:i + 16])
+            for i in range(0, len(texts), _batch):
+                res = pipe(texts[i:i + _batch])
                 emotions.extend(r[0]["label"] for r in res)
                 scores.extend(r[0]["score"]   for r in res)
-                _p(min((i + 16) / len(texts), 1.0),
-                   f"GoEmotions — {min(i+16, len(texts))}/{len(texts)}")
+                _p(min((i + _batch) / len(texts), 1.0),
+                   f"GoEmotions — {min(i+_batch, len(texts))}/{len(texts)}")
             df["emotion"]       = emotions
             df["emotion_score"] = scores
         except ImportError:
@@ -886,7 +1021,14 @@ if page == "Upload":
 
         _tabs = st.tabs(_tab_labels)
 
-        def _ac_html(icon, name, done, active):
+        _AC_DESC = {
+            "Othering":  "Detects us-vs-them language — dehumanisation, moral exclusion, generalisations",
+            "Toxicity":  "Scores toxicity, insults & threats using Detoxify",
+            "Emotions":  "Labels the dominant emotion per text (28 categories via GoEmotions)",
+            "BERTopic":  "Finds recurring topics via semantic clustering",
+        }
+
+        def _ac_html(icon, name, done, active, uid=""):
             if active:
                 bg = "rgba(124,58,237,0.18)"
                 badge_bg, badge_color = "rgba(124,58,237,0.35)", "#c4b5fd"
@@ -899,12 +1041,22 @@ if page == "Upload":
                 bg = "rgba(112,112,160,0.06)"
                 badge_bg, badge_color = "rgba(112,112,160,0.10)", "var(--muted)"
                 status = "optional"
-            return (f'<div class="ac-card" style="background:{bg};">'
-                    f'<div class="ac-icon">{icon}</div>'
-                    f'<div class="ac-name">{name}</div>'
-                    f'<div class="ac-badge" style="background:{badge_bg};color:{badge_color};">'
-                    f'{status}</div>'
-                    f'</div>')
+            _iid = f"aci_{name.lower()}_{uid}"
+            _info = _AC_INFO_HTML.get(name, "")
+            return (
+                f'<div class="ac-card" style="background:{bg};">'
+                f'<input type="checkbox" id="{_iid}" class="ac-info-toggle">'
+                f'<label for="{_iid}" class="ac-info-btn">?</label>'
+                f'<div class="ac-icon">{icon}</div>'
+                f'<div class="ac-name">{name}</div>'
+                f'<div class="ac-badge" style="background:{badge_bg};color:{badge_color};">{status}</div>'
+                f'<div class="ac-info-popup">'
+                f'<label for="{_iid}" class="ac-info-backdrop"></label>'
+                f'<div class="ac-info-box">{_info}'
+                f'<label for="{_iid}" class="ac-info-close">✕</label>'
+                f'</div></div>'
+                f'</div>'
+            )
 
         _dyn_css = (
             '[data-testid="stVerticalBlock"]:has(.ac-card){'
@@ -990,16 +1142,16 @@ if page == "Upload":
                 st.markdown(" ")
                 _ca, _cb, _cc, _cd = st.columns(4)
                 with _ca:
-                    st.markdown(_ac_html("◆", "Othering", already_processed, _run_oth), unsafe_allow_html=True)
+                    st.markdown(_ac_html("◆", "Othering", already_processed, _run_oth, _fkey), unsafe_allow_html=True)
                     run_othering = st.toggle("Run Othering",   value=False, disabled=already_processed, key=f"_tog_othering_{_fkey}")
                 with _cb:
-                    st.markdown(_ac_html("◎", "Toxicity", _has_tox, _run_det), unsafe_allow_html=True)
+                    st.markdown(_ac_html("◎", "Toxicity", _has_tox, _run_det, _fkey), unsafe_allow_html=True)
                     run_detoxify = st.toggle("Run Detoxify",   value=False, disabled=_has_tox,           key=f"_tog_detoxify_{_fkey}")
                 with _cc:
-                    st.markdown(_ac_html("◉", "Emotions", _has_emo, _run_emo), unsafe_allow_html=True)
+                    st.markdown(_ac_html("◉", "Emotions", _has_emo, _run_emo, _fkey), unsafe_allow_html=True)
                     run_emotions = st.toggle("Run GoEmotions", value=False, disabled=_has_emo,           key=f"_tog_emotions_{_fkey}")
                 with _cd:
-                    st.markdown(_ac_html("▶", "BERTopic", _has_ber, _run_ber), unsafe_allow_html=True)
+                    st.markdown(_ac_html("▶", "BERTopic", _has_ber, _run_ber, _fkey), unsafe_allow_html=True)
                     run_bertopic = st.toggle("Run BERTopic",   value=False, disabled=_has_ber,           key=f"_tog_bertopic_{_fkey}")
 
                 _, _run_col, _ = st.columns([1, 2, 1])
@@ -1012,7 +1164,7 @@ if page == "Upload":
                     "p.querySelectorAll('[data-testid=\"baseButton-primary\"]').forEach(function(b){"
                     "b.style.setProperty('background-color','#dc2626','important');"
                     "b.style.setProperty('border-color','#b91c1c','important');});}"
-                    "paint();setTimeout(paint,80);setTimeout(paint,300);"
+                    "paint();setTimeout(paint,200);"
                     "</script>",
                     height=0
                 )
