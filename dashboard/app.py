@@ -16,6 +16,23 @@ sys.path.insert(0, str(BASE_DIR / "src"))
 
 from cleaning import clean_text
 from othering import apply_othering
+from classifier import load_model
+
+import json as _json
+
+# Load trained classifier once at startup (None if not found)
+_CLF_PATH = BASE_DIR / "models" / "othering_classifier.pkl"
+_MTR_PATH = BASE_DIR / "models" / "othering_metrics.json"
+try:
+    _CLASSIFIER = load_model(str(_CLF_PATH))
+except Exception:
+    _CLASSIFIER = None
+
+try:
+    with open(_MTR_PATH) as _f:
+        _CLF_METRICS = _json.load(_f)
+except Exception:
+    _CLF_METRICS = None
 
 st.set_page_config(layout="wide", page_title="We vs Them", page_icon="⚡")
 
@@ -640,7 +657,19 @@ def fast_pipeline(df: pd.DataFrame, run_othering: bool = True) -> pd.DataFrame:
     if run_othering and "has_othering" not in df.columns:
         df = apply_othering(df, text_col="clean_text")
     if "othering_predicted" not in df.columns:
-        df["othering_predicted"] = df["has_othering"].astype(int) if "has_othering" in df.columns else 0
+        if _CLASSIFIER is not None and run_othering:
+            _vect = _CLASSIFIER.get("vectorizer")
+            _mdl  = _CLASSIFIER.get("model")
+            _texts = df["clean_text"].fillna("").tolist()
+            if _vect is not None:
+                _X = _vect.transform(_texts)
+            else:
+                from classifier import build_embedding_features
+                _X = build_embedding_features(_texts, show_progress=False)
+            df["othering_predicted"] = _mdl.predict(_X).astype(int)
+            df["othering_proba"]     = _mdl.predict_proba(_X)[:, 1].round(4)
+        else:
+            df["othering_predicted"] = df["has_othering"].astype(int) if "has_othering" in df.columns else 0
     if "othering_proba" not in df.columns:
         df["othering_proba"] = df["othering_score"] / 4.0 if "othering_score" in df.columns else 0.0
     for col in ["toxicity", "severe_toxicity", "identity_attack", "insult", "threat", "emotion", "emotion_score"]:
@@ -1643,6 +1672,61 @@ elif page == "Othering":
     c3.metric("Avg score",      f"{score_mean:.2f} / 4")
     both_pct = (df["pronoun_type"] == "both").mean() * 100
     c4.metric("Both we + them", f"{both_pct:.1f}%")
+
+    # ML Classifier metrics block
+    if _CLF_METRICS:
+        st.markdown('<div class="section-header">ML Classifier — othering detection</div>', unsafe_allow_html=True)
+        _m = _CLF_METRICS
+        _banner_color = "rgba(124,58,237,0.12)"
+        st.markdown(
+            f'<div style="background:{_banner_color};border:1px solid rgba(124,58,237,0.3);border-radius:8px;'
+            f'padding:10px 16px;font-family:IBM Plex Mono,monospace;font-size:11px;color:#c4b5fd;margin-bottom:12px;">'
+            f'Active model: <b>{_m["model_name"]}</b> · '
+            f'trained on {_m["n_train"]:,} samples ({_m["n_pos_train"]:,} othering) · '
+            f'silver labels from rule-based detector</div>',
+            unsafe_allow_html=True,
+        )
+        _mc1, _mc2, _mc3, _mc4 = st.columns(4)
+        _mc1.metric("Precision", f'{_m["precision"]:.3f}')
+        _mc2.metric("Recall",    f'{_m["recall"]:.3f}')
+        _mc3.metric("F1",        f'{_m["f1"]:.3f}')
+        _mc4.metric("Test set",  f'{_m["n_test"]:,}')
+
+        _clf_col_a, _clf_col_b = st.columns(2)
+        with _clf_col_a:
+            st.markdown('<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#70709f;margin-bottom:6px;">Model comparison</div>', unsafe_allow_html=True)
+            _cmp = pd.DataFrame(_m["all_models"]).sort_values("f1", ascending=False)
+            _cmp_fig = go.Figure(go.Bar(
+                x=_cmp["f1"], y=[f'{r["model"]} / {r["features"]}' for _, r in _cmp.iterrows()],
+                orientation="h",
+                marker=dict(color=["#7c3aed" if i == 0 else "#2a2a3a" for i in range(len(_cmp))],
+                            line_width=0),
+                text=[f'F1 {v:.4f}' for v in _cmp["f1"]],
+                textposition="inside",
+                textfont=dict(family="IBM Plex Mono, monospace", size=10),
+            ))
+            apply_theme(_cmp_fig, height=max(120, len(_cmp) * 48 + 40))
+            _cmp_fig.update_layout(xaxis=dict(range=[0.9, 1.0], title="F1"), yaxis_title="", margin=dict(l=0))
+            st.plotly_chart(_cmp_fig, use_container_width=True)
+
+        with _clf_col_b:
+            st.markdown('<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#70709f;margin-bottom:6px;">Confusion matrix (test set)</div>', unsafe_allow_html=True)
+            _cm = _m["confusion_matrix"]
+            _cm_labels = ["no_othering", "othering"]
+            _cm_fig = go.Figure(go.Heatmap(
+                z=_cm,
+                x=_cm_labels, y=_cm_labels,
+                colorscale=[[0, "#13131a"], [0.5, "rgba(124,58,237,0.4)"], [1, "#7c3aed"]],
+                texttemplate="%{z}",
+                textfont=dict(family="IBM Plex Mono, monospace", size=13, color="#e2e2f0"),
+                showscale=False,
+            ))
+            apply_theme(_cm_fig, height=220)
+            _cm_fig.update_layout(
+                xaxis_title="Predicted", yaxis_title="True",
+                xaxis=dict(side="bottom"), yaxis=dict(autorange="reversed"),
+            )
+            st.plotly_chart(_cm_fig, use_container_width=True)
 
     st.markdown(" ")
     col_a, col_b = st.columns(2)

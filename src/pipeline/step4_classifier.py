@@ -185,6 +185,34 @@ payload = {
 }
 save_model(payload, "models/othering_classifier.pkl")
 
+# Save metrics JSON for dashboard display
+import json
+best_entry_for_json = next(r for r in all_results if r["f1"] == best_overall["f1"])
+metrics_payload = {
+    "model_name":   best_overall["name"],
+    "n_train":      int(len(y_train)),
+    "n_test":       int(len(y_test)),
+    "n_pos_train":  int(y_train_arr.sum()),
+    "n_pos_test":   int(y_test_arr.sum()),
+    "precision":    round(float(best_entry_for_json["precision"]), 4),
+    "recall":       round(float(best_entry_for_json["recall"]),    4),
+    "f1":           round(float(best_entry_for_json["f1"]),        4),
+    "confusion_matrix": best_entry_for_json["cm"].tolist(),
+    "all_models": [
+        {
+            "model":     r["model_name"],
+            "features":  r["feature"],
+            "precision": round(float(r["precision"]), 4),
+            "recall":    round(float(r["recall"]),    4),
+            "f1":        round(float(r["f1"]),        4),
+        }
+        for r in all_results
+    ],
+}
+with open("models/othering_metrics.json", "w") as _f:
+    json.dump(metrics_payload, _f, indent=2)
+print("  Metrics saved to models/othering_metrics.json")
+
 
 # ---------------------------------------------------------------------------
 # Task 6 — Full report on best model
