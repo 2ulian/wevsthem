@@ -658,14 +658,10 @@ def fast_pipeline(df: pd.DataFrame, run_othering: bool = True) -> pd.DataFrame:
         df = apply_othering(df, text_col="clean_text")
     if "othering_predicted" not in df.columns:
         if _CLASSIFIER is not None and run_othering:
-            _vect = _CLASSIFIER.get("vectorizer")
-            _mdl  = _CLASSIFIER.get("model")
+            _vect  = _CLASSIFIER.get("vectorizer")
+            _mdl   = _CLASSIFIER.get("model")
             _texts = df["clean_text"].fillna("").tolist()
-            if _vect is not None:
-                _X = _vect.transform(_texts)
-            else:
-                from classifier import build_embedding_features
-                _X = build_embedding_features(_texts, show_progress=False)
+            _X     = _vect.transform(_texts)
             df["othering_predicted"] = _mdl.predict(_X).astype(int)
             df["othering_proba"]     = _mdl.predict_proba(_X)[:, 1].round(4)
         else:
@@ -849,13 +845,17 @@ def _parse_date_col(df: pd.DataFrame) -> pd.Series | None:
 def load_single(path_str: str, is_default: bool) -> pd.DataFrame:
     path = Path(path_str)
     already_analyzed = is_default or (CUSTOM_DIR in path.parents)
-    if already_analyzed:
-        df = pd.read_csv(path, low_memory=False)
+    df = pd.read_excel(path) if path.suffix.lower() == ".xlsx" else pd.read_csv(path, low_memory=False)
+    col, _ = detect_text_column(df)
+    if col and col != "text":
+        df = df.rename(columns={col: "text"})
+    elif col is None:
+        df["text"] = ""
+    if already_analyzed and "othering_predicted" in df.columns:
         for col in ["othering_predicted", "othering_proba", "othering_score", "toxicity"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-        if "othering_predicted" in df.columns:
-            df["othering_predicted"] = df["othering_predicted"].fillna(0).astype(int)
+        df["othering_predicted"] = df["othering_predicted"].fillna(0).astype(int)
         for col_name, default in [("subreddit", "unknown"), ("source", "unknown"),
                                    ("pronoun_type", "unknown")]:
             if col_name not in df.columns:
@@ -866,12 +866,6 @@ def load_single(path_str: str, is_default: bool) -> pd.DataFrame:
             if col not in df.columns:
                 df[col] = np.nan
     else:
-        df = pd.read_excel(path) if path.suffix.lower() == ".xlsx" else pd.read_csv(path, low_memory=False)
-        col, _ = detect_text_column(df)
-        if col and col != "text":
-            df = df.rename(columns={col: "text"})
-        elif col is None:
-            df["text"] = ""
         df = fast_pipeline(df)
     if "post_date" not in df.columns:
         parsed = _parse_date_col(df)
@@ -1030,21 +1024,8 @@ with st.sidebar:
                         selected_datasets.append(_lbl)
             st.markdown(" ")
 
-    st.markdown('<hr class="divider">', unsafe_allow_html=True)
-
-    # Search & filter
-    st.markdown('<div class="section-header">Filters</div>', unsafe_allow_html=True)
-    keyword = st.text_input("", placeholder="Search keyword...", label_visibility="collapsed")
-
-    _df_for_subs = df_all[df_all["dataset"].isin(selected_datasets)] if selected_datasets else df_all
-    known_subreddits = sorted(
-        s for s in _df_for_subs["subreddit"].unique()
-        if s not in ("unknown", "none", "") and pd.notna(s)
-    )
-    selected_subreddits = st.multiselect(
-        "", options=known_subreddits, default=[], placeholder="Subreddit / account",
-        label_visibility="collapsed",
-    )
+    keyword = ""
+    selected_subreddits = []
 
 page = st.session_state["page"]
 
@@ -1741,19 +1722,32 @@ elif page == "Othering":
         with _clf_col_b:
             st.markdown('<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#70709f;margin-bottom:6px;">Confusion matrix (test set)</div>', unsafe_allow_html=True)
             _cm = _m["confusion_matrix"]
-            _cm_labels = ["no_othering", "othering"]
+            _tn, _fp, _fn, _tp = _cm[0][0], _cm[0][1], _cm[1][0], _cm[1][1]
+            _cell_labels = [
+                [f"<b>{_tn:,}</b><br><span style='font-size:10px;color:#70709f'>Correct non-othering<br>(true negatives)</span>",
+                 f"<b>{_fp:,}</b><br><span style='font-size:10px;color:#e11d48'>Non-othering flagged<br>(false positives)</span>"],
+                [f"<b>{_fn:,}</b><br><span style='font-size:10px;color:#f59e0b'>Othering missed<br>(false negatives)</span>",
+                 f"<b>{_tp:,}</b><br><span style='font-size:10px;color:#10b981'>Correct othering<br>(true positives)</span>"],
+            ]
+            _cell_colors = [
+                ["rgba(16,185,129,0.15)", "rgba(225,29,72,0.25)"],
+                ["rgba(245,158,11,0.25)", "rgba(124,58,237,0.3)"],
+            ]
             _cm_fig = go.Figure(go.Heatmap(
-                z=_cm,
-                x=_cm_labels, y=_cm_labels,
-                colorscale=[[0, "#13131a"], [0.5, "rgba(124,58,237,0.4)"], [1, "#7c3aed"]],
-                texttemplate="%{z}",
-                textfont=dict(family="IBM Plex Mono, monospace", size=13, color="#e2e2f0"),
+                z=[[_tn, _fp], [_fn, _tp]],
+                x=["Predicted: No", "Predicted: Yes"],
+                y=["Actual: No", "Actual: Yes"],
+                text=_cell_labels,
+                texttemplate="%{text}",
+                textfont=dict(family="IBM Plex Mono, monospace", size=12, color="#e2e2f0"),
+                colorscale=[[0, "#13131a"], [1, "#1e1e2e"]],
                 showscale=False,
             ))
-            apply_theme(_cm_fig, height=220)
+            apply_theme(_cm_fig, height=240)
             _cm_fig.update_layout(
-                xaxis_title="Predicted", yaxis_title="True",
-                xaxis=dict(side="bottom"), yaxis=dict(autorange="reversed"),
+                xaxis=dict(side="top"),
+                yaxis=dict(autorange="reversed"),
+                margin=dict(t=60),
             )
             st.plotly_chart(_cm_fig, use_container_width=True)
 
@@ -1973,7 +1967,7 @@ elif page == "Othering":
 # ── Temporal ──────────────────────────────────────────────────────────────────
 
 elif page == "Temporal":
-    from events import load_curated, load_all_events, event_study as _event_study
+    from events import event_study as _event_study
 
     st.markdown('<div class="page-title">Temporal Analysis</div>', unsafe_allow_html=True)
 
@@ -2001,19 +1995,17 @@ elif page == "Temporal":
         unsafe_allow_html=True,
     )
 
-    # Load events
-    _evt_df = load_curated(BASE_DIR / "data" / "events" / "curated_events.csv")
-    _acled_email    = st.secrets.get("ACLED_EMAIL",    None) if hasattr(st, "secrets") else None
-    _acled_password = st.secrets.get("ACLED_PASSWORD", None) if hasattr(st, "secrets") else None
-    if _acled_email and _acled_password:
+    # Load curated events CSV
+    _evt_df = pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]"), "title": pd.Series(dtype=str),
+                             "category": pd.Series(dtype=str), "country": pd.Series(dtype=str),
+                             "region": pd.Series(dtype=str), "source_type": pd.Series(dtype=str)})
+    _curated_path = BASE_DIR / "data" / "events" / "curated_events.csv"
+    if _curated_path.exists():
         try:
-            from events import fetch_acled as _fetch_acled
-            _acled_df = _fetch_acled(_acled_email, _acled_password,
-                                     date_range_start=str(date_min),
-                                     date_range_end=str(date_max))
-            _evt_df = pd.concat([_evt_df, _acled_df], ignore_index=True)
-        except Exception:
-            pass
+            _evt_df = pd.read_csv(_curated_path, parse_dates=["date"])
+            _evt_df["date"] = pd.to_datetime(_evt_df["date"], errors="coerce")
+        except Exception as _e:
+            st.sidebar.warning(f"Events load failed: {_e}")
 
     _evt_in_range = _evt_df[
         (_evt_df["date"].dt.date >= date_min) &
@@ -2145,27 +2137,56 @@ elif page == "Temporal":
             unsafe_allow_html=True,
         )
 
-        _es1, _es2, _es3 = st.columns(3)
+        _es1, _es2 = st.columns(2)
         with _es1:
             _es_window = st.slider("Window (days each side)", 3, 30, 14)
         with _es2:
             _es_metric = st.selectbox("Metric", ["othering_predicted", "toxicity"],
                 format_func=lambda x: "Othering rate" if x == "othering_predicted" else "Toxicity")
-        with _es3:
-            _es_cats = st.multiselect("Event categories", sorted(_evt_df["category"].dropna().unique()),
-                default=sorted(_evt_df["category"].dropna().unique()))
 
-        _evt_filtered = _evt_df[_evt_df["category"].isin(_es_cats)] if _es_cats else _evt_df
-        _evt_options  = _evt_filtered.sort_values("date")["title"].tolist()
+        _evt_options = _evt_df.sort_values("date")["title"].tolist()
 
         if not _evt_options:
-            st.info("No events match the selected categories.")
+            st.info("No events available.")
         else:
-            _selected_evts = st.multiselect("Select events to analyse", _evt_options,
-                default=_evt_options[:min(5, len(_evt_options))])
+            # Score each event: lift in othering + toxicity at/after event vs before
+            _df_t_day = df_t.copy()
+            _df_t_day["_day"] = _df_t_day["post_date"].dt.normalize()
+            _score_cols = [c for c in ["othering_predicted", "toxicity"] if c in _df_t_day.columns and _df_t_day[c].notna().any()]
+            _daily = _df_t_day.groupby("_day")[_score_cols].mean() if _score_cols else pd.DataFrame()
+
+            def _score_event(evt_date):
+                if _daily.empty:
+                    return 0
+                pre_start  = evt_date - pd.Timedelta(days=_es_window)
+                pre_end    = evt_date - pd.Timedelta(days=1)
+                post_end   = evt_date + pd.Timedelta(days=7)
+                pre_days   = _daily.loc[pre_start:pre_end]
+                post_days  = _daily.loc[evt_date:post_end]
+                if len(pre_days) < 2 or len(post_days) < 1:
+                    return 0
+                lift = 0
+                for col in _score_cols:
+                    pre_mean  = pre_days[col].mean()
+                    post_mean = post_days[col].mean()
+                    pre_std   = pre_days[col].std() + 1e-6
+                    lift += max(0, (post_mean - pre_mean) / pre_std)
+                return lift
+
+            _evt_scores = _evt_df.copy()
+            _evt_scores["_score"] = _evt_scores["date"].apply(_score_event)
+            _suggested = _evt_scores.nlargest(3, "_score")["title"].tolist()
+            _suggested = [t for t in _suggested if _evt_scores.loc[_evt_scores["title"]==t, "_score"].values[0] > 0]
+
+            _selected_evts = st.multiselect(
+                "Select events to analyse",
+                _evt_options,
+                default=_suggested if _suggested else _evt_options[:min(3, len(_evt_options))],
+                help="Pre-selection: events with the most posts and signal in your loaded datasets.",
+            )
 
             if _selected_evts:
-                _evts_to_study = _evt_filtered[_evt_filtered["title"].isin(_selected_evts)]
+                _evts_to_study = _evt_df[_evt_df["title"].isin(_selected_evts)]
                 _es_result = _event_study(df_t, _evts_to_study,
                                           window_days=_es_window,
                                           metric_cols=[_es_metric])
@@ -2246,7 +2267,10 @@ elif page == "Temporal":
                         _sub = _es_result[_es_result["event_title"] == evt_title]
                         if _sub.empty:
                             continue
-                        _peak_row = _sub.loc[(_sub[_metric_dev] * _scale).abs().idxmax()]
+                        _dev_series = (_sub[_metric_dev] * _scale).abs()
+                        if _dev_series.isna().all():
+                            continue
+                        _peak_row = _sub.loc[_dev_series.idxmax()]
                         _summary_rows.append({
                             "Event": evt_title[:60],
                             "Date": str(_peak_row["event_date"])[:10],
