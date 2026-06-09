@@ -1475,57 +1475,6 @@ elif page == "Toxicity":
     c4.metric("Max score",       f"{df_tox['toxicity'].max():.3f}")
 
     st.markdown(" ")
-    col_a, col_b = st.columns([3, 2])
-
-    with col_a:
-        st.markdown('<div class="section-header">Distribution by dataset</div>', unsafe_allow_html=True)
-        datasets_in_tox = df_tox["dataset"].unique()
-        short_map = {d: re.sub(r"\.(csv|xlsx)$", "", d.split("  ·  ")[-1]) if "  ·  " in d else d
-                     for d in datasets_in_tox}
-        fig = go.Figure()
-        for i, ds in enumerate(datasets_in_tox):
-            vals = np.sort(df_tox[df_tox["dataset"] == ds]["toxicity"].dropna().values)
-            if len(vals) == 0:
-                continue
-            ecdf_y = np.arange(1, len(vals) + 1) / len(vals)
-            fig.add_trace(go.Scatter(
-                x=vals, y=ecdf_y,
-                mode="lines",
-                name=short_map[ds],
-                line=dict(color=PALETTE[i % len(PALETTE)], width=2),
-            ))
-        apply_theme(fig, height=300)
-        fig.update_layout(
-            xaxis_title="Toxicity score",
-            yaxis=dict(title="Cumulative %", tickformat=".0%",
-                       gridcolor="#1e1e2e", zeroline=False),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col_b:
-        st.markdown('<div class="section-header">Toxicity vs othering</div>', unsafe_allow_html=True)
-        box = df_tox.copy()
-        box["Group"] = box["othering_predicted"].map({1: "Othering", 0: "Non-othering"})
-        fig2 = go.Figure()
-        for i, grp in enumerate(["Othering", "Non-othering"]):
-            vals = box[box["Group"] == grp]["toxicity"].dropna()
-            fig2.add_trace(go.Histogram(
-                x=vals, name=grp,
-                histnorm="probability density",
-                nbinsx=60,
-                marker_color=hex_rgba(PALETTE[i], 0.55),
-                marker_line_color=PALETTE[i], marker_line_width=1,
-                opacity=0.75,
-            ))
-        apply_theme(fig2, height=300)
-        fig2.update_layout(
-            barmode="overlay",
-            xaxis_title="Toxicity score",
-            yaxis=dict(title="Density", gridcolor="#1e1e2e", zeroline=False),
-            legend=dict(orientation="h", y=1.06, x=0.5, xanchor="center"),
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-
     # Toxicity × othering scatter
     st.markdown('<div class="section-header">Toxicity × othering score</div>', unsafe_allow_html=True)
     _sdf = df_tox.copy()
@@ -2099,6 +2048,58 @@ elif page == "Temporal":
             fig_tox.update_layout(xaxis_title="", yaxis_title="Mean toxicity", legend=dict(orientation="h", y=1.08))
             st.plotly_chart(fig_tox, use_container_width=True)
 
+        # Emotion distribution over time
+        if "emotion" in df_t.columns and df_t["emotion"].notna().any():
+            st.markdown('<div class="section-header">Emotion distribution over time</div>', unsafe_allow_html=True)
+            _EMO_PALETTE = {
+                "neutral":       "#70709f",
+                "joy":           "#10b981",
+                "admiration":    "#0ea5e9",
+                "gratitude":     "#34d399",
+                "optimism":      "#fbbf24",
+                "love":          "#f472b6",
+                "approval":      "#6ee7b7",
+                "amusement":     "#22d3ee",
+                "anger":         "#e11d48",
+                "fear":          "#f59e0b",
+                "sadness":       "#7c3aed",
+                "disgust":       "#8b5cf6",
+                "disapproval":   "#ef4444",
+                "disappointment":"#a78bfa",
+                "annoyance":     "#fb923c",
+                "nervousness":   "#facc15",
+            }
+            _emo_tl = df_t[df_t["emotion"].notna()].copy()
+            _emo_tl["period"] = _emo_tl["post_date"].dt.to_period(_freq).dt.to_timestamp()
+            _top_emos_tl = _emo_tl["emotion"].value_counts().head(8).index.tolist()
+            _emo_counts = (
+                _emo_tl[_emo_tl["emotion"].isin(_top_emos_tl)]
+                .groupby(["period", "emotion"]).size().reset_index(name="n")
+            )
+            _emo_totals = _emo_tl.groupby("period").size().reset_index(name="total")
+            _emo_counts = _emo_counts.merge(_emo_totals, on="period")
+            _emo_counts["pct"] = _emo_counts["n"] / _emo_counts["total"] * 100
+            fig_emo = go.Figure()
+            for _emo in _top_emos_tl:
+                _sub_emo = _emo_counts[_emo_counts["emotion"] == _emo].sort_values("period")
+                if _sub_emo.empty:
+                    continue
+                fig_emo.add_trace(go.Scatter(
+                    x=_sub_emo["period"], y=_sub_emo["pct"],
+                    mode="lines", name=_emo,
+                    line=dict(color=_EMO_PALETTE.get(_emo, "#9ca3af"), width=1.5),
+                    stackgroup="one",
+                    groupnorm="percent",
+                    hovertemplate="%{y:.1f}%<extra>" + _emo + "</extra>",
+                ))
+            _add_event_lines(fig_emo)
+            apply_theme(fig_emo, height=280)
+            fig_emo.update_layout(
+                xaxis_title="", yaxis_title="Share of emotional posts (%)",
+                legend=dict(orientation="h", y=1.1),
+            )
+            st.plotly_chart(fig_emo, use_container_width=True)
+
         # Spike table
         st.markdown('<div class="section-header">Detected spikes (othering rate > mean + 1.5σ)</div>', unsafe_allow_html=True)
         _spike_rows = []
@@ -2141,8 +2142,23 @@ elif page == "Temporal":
         with _es1:
             _es_window = st.slider("Window (days each side)", 3, 30, 14)
         with _es2:
-            _es_metric = st.selectbox("Metric", ["othering_predicted", "toxicity"],
-                format_func=lambda x: "Othering rate" if x == "othering_predicted" else "Toxicity")
+            _es_base_metrics = [m for m in ["othering_predicted", "toxicity"]
+                                if m in df_t.columns and df_t[m].notna().any()]
+            _es_emo_opts = []
+            if "emotion" in df_t.columns and df_t["emotion"].notna().any():
+                _avail_emos = df_t["emotion"].value_counts().index.tolist()
+                for _e in ["anger", "fear", "sadness", "disgust", "disapproval",
+                           "annoyance", "nervousness", "grief", "remorse"]:
+                    if _e in _avail_emos:
+                        _es_emo_opts.append(f"emo:{_e}")
+            _es_all_metrics = _es_base_metrics + _es_emo_opts
+
+            def _fmt_es_metric(x):
+                if x == "othering_predicted": return "Othering rate"
+                if x == "toxicity":           return "Toxicity"
+                return f"Emotion: {x.split(':', 1)[1]}"
+
+            _es_metric = st.selectbox("Metric", _es_all_metrics, format_func=_fmt_es_metric)
 
         _evt_options = _evt_df.sort_values("date")["title"].tolist()
 
@@ -2187,7 +2203,17 @@ elif page == "Temporal":
 
             if _selected_evts:
                 _evts_to_study = _evt_df[_evt_df["title"].isin(_selected_evts)]
-                _es_result = _event_study(df_t, _evts_to_study,
+
+                # For emotion metrics, materialise a binary column before passing to event_study
+                _df_t_es = df_t.copy()
+                if _es_metric and _es_metric.startswith("emo:"):
+                    _emo_name = _es_metric.split(":", 1)[1]
+                    _df_t_es[_es_metric] = np.where(
+                        _df_t_es["emotion"].isna(), np.nan,
+                        (_df_t_es["emotion"] == _emo_name).astype(float),
+                    )
+
+                _es_result = _event_study(_df_t_es, _evts_to_study,
                                           window_days=_es_window,
                                           metric_cols=[_es_metric])
 
@@ -2196,9 +2222,15 @@ elif page == "Temporal":
                 else:
                     _metric_dev = f"{_es_metric}_deviation"
                     _metric_val = _es_metric
-                    _ylabel_dev = ("Othering rate deviation (pp)" if _es_metric == "othering_predicted"
-                                   else "Toxicity deviation")
-                    _scale = 100 if _es_metric == "othering_predicted" else 1
+                    if _es_metric == "othering_predicted":
+                        _ylabel_dev = "Othering rate deviation (pp)"
+                        _scale = 100
+                    elif _es_metric.startswith("emo:"):
+                        _ylabel_dev = f"{_es_metric.split(':',1)[1].capitalize()} rate deviation (pp)"
+                        _scale = 100
+                    else:
+                        _ylabel_dev = "Toxicity deviation"
+                        _scale = 1
 
                     # Individual event windows
                     st.markdown('<div class="section-header">Deviation from global mean per event</div>', unsafe_allow_html=True)
@@ -2227,38 +2259,6 @@ elif page == "Temporal":
                         legend=dict(orientation="h", y=1.1),
                     )
                     st.plotly_chart(fig_es, use_container_width=True)
-
-                    # Average effect across all selected events
-                    if len(_selected_evts) > 1:
-                        st.markdown('<div class="section-header">Average effect across selected events</div>', unsafe_allow_html=True)
-                        _avg = (_es_result.groupby("day_offset")[_metric_dev]
-                                .agg(mean="mean", std="std", n="count").reset_index())
-                        _avg["upper"] = (_avg["mean"] + _avg["std"]) * _scale
-                        _avg["lower"] = (_avg["mean"] - _avg["std"]) * _scale
-                        _avg["mean_s"] = _avg["mean"] * _scale
-
-                        fig_avg = go.Figure()
-                        fig_avg.add_trace(go.Scatter(
-                            x=pd.concat([_avg["day_offset"], _avg["day_offset"][::-1]]),
-                            y=pd.concat([_avg["upper"], _avg["lower"][::-1]]),
-                            fill="toself",
-                            fillcolor="rgba(124,58,237,0.12)",
-                            line=dict(color="rgba(0,0,0,0)"),
-                            showlegend=False, name="±1σ",
-                        ))
-                        fig_avg.add_trace(go.Scatter(
-                            x=_avg["day_offset"], y=_avg["mean_s"],
-                            mode="lines", name="mean deviation",
-                            line=dict(color="#7c3aed", width=2),
-                        ))
-                        fig_avg.add_hline(y=0, line=dict(color="rgba(226,226,240,0.3)", width=1, dash="dash"))
-                        fig_avg.add_vline(x=0, line=dict(color="rgba(226,226,240,0.5)", width=1, dash="dot"))
-                        apply_theme(fig_avg, height=300)
-                        fig_avg.update_layout(
-                            xaxis_title="Days relative to event",
-                            yaxis_title=f"Avg {_ylabel_dev}",
-                        )
-                        st.plotly_chart(fig_avg, use_container_width=True)
 
                     # Summary table
                     st.markdown('<div class="section-header">Peak deviation per event</div>', unsafe_allow_html=True)
