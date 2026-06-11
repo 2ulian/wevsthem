@@ -28,17 +28,22 @@ source .venv/bin/activate      # Linux / macOS
 
 ### 3. Install dependencies
 
-**CPU-only machine (no GPU):**
+**Dashboard only** — visualise existing data, no ML analysis (~200 MB):
+```bash
+pip install -r requirements-dashboard.txt
+```
+
+**Full pipeline, CPU** — adds torch, BERTopic, Detoxify, GoEmotions (~4 GB):
 ```bash
 pip install -r requirements-cpu.txt --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
-**Machine with NVIDIA GPU (CUDA):**
+**Full pipeline, GPU (CUDA)**:
 ```bash
 pip install -r requirements.txt
 ```
 
-> The first run will download the sentence-transformer model (`all-MiniLM-L6-v2`, ~90 MB) and BERTopic embeddings automatically.
+> When running the full pipeline, the sentence-transformer model (`all-MiniLM-L6-v2`, ~90 MB) and other models are downloaded automatically on first use.
 
 ## Launch the dashboard
 
