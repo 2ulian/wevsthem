@@ -12,13 +12,13 @@ from data import (
     build_combined, discover_datasets, PLATFORM_EMOJI,
     CUSTOM_DIR, BASE_DIR,
 )
-import pages.overview  as page_overview
-import pages.toxicity  as page_toxicity
-import pages.emotions  as page_emotions
-import pages.othering  as page_othering
-import pages.topics    as page_topics
-import pages.temporal  as page_temporal
-import pages.upload    as page_upload
+import views.overview  as page_overview
+import views.toxicity  as page_toxicity
+import views.emotions  as page_emotions
+import views.othering  as page_othering
+import views.topics    as page_topics
+import views.temporal  as page_temporal
+import views.upload    as page_upload
 
 st.set_page_config(layout="wide", page_title="We vs Them", page_icon="⚡")
 st.markdown(CSS, unsafe_allow_html=True)
