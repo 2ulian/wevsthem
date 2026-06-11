@@ -14,7 +14,7 @@ No other system dependency is needed for a CPU-only setup.
 ### 1. Clone the repo
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/2ulian/wevsthem
 cd wevsthem
 ```
 
