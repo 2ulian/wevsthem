@@ -1,9 +1,9 @@
-# Enrichit les posts sans émotion avec GoEmotions → met à jour tous les fichiers processed
+# Enrich posts missing an emotion with GoEmotions and propagate the new
+# values back to every processed CSV that mirrors dataset_final.csv.
 
 import warnings
 warnings.filterwarnings("ignore")
 
-import numpy as np
 import pandas as pd
 from transformers import pipeline
 
@@ -16,27 +16,27 @@ FILES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Charger dataset_final et identifier les lignes sans émotion
+# Load dataset_final and locate rows missing an emotion label
 # ---------------------------------------------------------------------------
-print("Chargement dataset_final.csv…")
+print("Loading dataset_final.csv…")
 df = pd.read_csv("data/processed/dataset_final.csv", low_memory=False)
-print(f"  {len(df):,} lignes total")
+print(f"  {len(df):,} rows total")
 
 missing_mask = df["emotion"].isna()
 n_missing = missing_mask.sum()
-print(f"  {n_missing:,} lignes sans émotion ({n_missing/len(df)*100:.1f}%)")
+print(f"  {n_missing:,} rows without emotion ({n_missing/len(df)*100:.1f}%)")
 
 if n_missing == 0:
-    print("Rien à faire — toutes les émotions sont déjà renseignées.")
+    print("Nothing to do — every row already has an emotion.")
     raise SystemExit(0)
 
 text_col = "clean_text" if "clean_text" in df.columns else "text"
 texts_to_score = df.loc[missing_mask, text_col].fillna("").tolist()
 
 # ---------------------------------------------------------------------------
-# Charger le modèle GoEmotions
+# Load the GoEmotions model
 # ---------------------------------------------------------------------------
-print("\nChargement GoEmotions (monologg/bert-base-cased-goemotions-original)…")
+print("\nLoading GoEmotions (monologg/bert-base-cased-goemotions-original)…")
 emotion_pipe = pipeline(
     "text-classification",
     model="monologg/bert-base-cased-goemotions-original",
@@ -47,12 +47,12 @@ emotion_pipe = pipeline(
 
 # Smoke test
 _ = emotion_pipe(["test"])
-print("  Modèle chargé.")
+print("  Model loaded.")
 
 # ---------------------------------------------------------------------------
-# Inférence par batches
+# Batched inference
 # ---------------------------------------------------------------------------
-print(f"\nInférence sur {n_missing:,} posts (batch={EMOTION_BATCH})…")
+print(f"\nRunning inference on {n_missing:,} posts (batch={EMOTION_BATCH})…")
 emotions = []
 e_scores = []
 
@@ -75,17 +75,17 @@ for start in range(0, len(texts_to_score), EMOTION_BATCH):
 print(f"  {n_missing:,}/{n_missing:,} — done")
 
 # ---------------------------------------------------------------------------
-# Mettre à jour dataset_final en mémoire
+# Update dataset_final in memory
 # ---------------------------------------------------------------------------
 missing_indices = df.index[missing_mask]
 df.loc[missing_indices, "emotion"]       = emotions
 df.loc[missing_indices, "emotion_score"] = e_scores
 
-print(f"\nTop 5 émotions (nouveaux posts) :")
+print(f"\nTop 5 emotions (new posts):")
 print(pd.Series(emotions).value_counts().head(5).to_string())
 
 # ---------------------------------------------------------------------------
-# Sauvegarder tous les fichiers processed
+# Propagate the new columns to every processed CSV
 # ---------------------------------------------------------------------------
 emotion_update = df[["emotion", "emotion_score"]].copy()
 
@@ -93,13 +93,13 @@ for fpath in FILES:
     try:
         target = pd.read_csv(fpath, low_memory=False)
         if len(target) != len(df):
-            print(f"  SKIP {fpath} — taille différente ({len(target)} vs {len(df)})")
+            print(f"  SKIP {fpath} — size mismatch ({len(target)} vs {len(df)})")
             continue
         target["emotion"]       = emotion_update["emotion"].values
         target["emotion_score"] = emotion_update["emotion_score"].values
         target.to_csv(fpath, index=False)
-        print(f"  Mis à jour → {fpath}")
+        print(f"  Updated → {fpath}")
     except FileNotFoundError:
-        print(f"  SKIP {fpath} — fichier introuvable")
+        print(f"  SKIP {fpath} — file not found")
 
-print("\nGoEmotions full run terminé.")
+print("\nGoEmotions full run done.")

@@ -1,5 +1,5 @@
 """
-Othering Detector — Week 3 of "We vs Them" NLP project.
+Rule-based othering detector for the We vs Them NLP project.
 
 Detects "othering" language in social media posts using four pattern families:
   1. Dehumanizing metaphors  (invasion, flood, swarm…)

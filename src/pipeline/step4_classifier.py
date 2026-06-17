@@ -85,18 +85,6 @@ print("\n" + "=" * 60)
 print("TASK 2 — TF-IDF features (LR + SVM)")
 print("=" * 60)
 
-X_tfidf_all, vectorizer = build_tfidf_features(texts)
-X_tfidf_train = X_tfidf_all[:len(X_text_train)]
-X_tfidf_test  = X_tfidf_all[len(X_text_train):]
-
-# Re-split to keep alignment
-from sklearn.model_selection import train_test_split as tts
-import scipy.sparse as sp
-
-X_tfidf_full, _ = build_tfidf_features(
-    X_text_train + X_text_test,
-    max_features=50_000,
-)
 # Fit on train only to avoid leakage
 X_tfidf_tr, vect = build_tfidf_features(X_text_train)
 X_tfidf_te       = vect.transform(X_text_test)

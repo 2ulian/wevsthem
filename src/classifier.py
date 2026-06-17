@@ -1,5 +1,5 @@
 """
-Classifier utilities — Week 4 of "We vs Them" NLP project.
+Classifier utilities for the We vs Them NLP project.
 
 Provides:
   - build_tfidf_features(texts)        → sparse TF-IDF matrix
